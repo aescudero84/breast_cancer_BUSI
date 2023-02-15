@@ -44,9 +44,11 @@ ENV/
 env.bak/
 venv.bak/
 
-# mkdocs documentation
-/site
-
+# folders
+/runs
+/Datasets
+/notebooks
+/papers
 
 # PyCharm
 .idea/
