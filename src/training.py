@@ -1,26 +1,29 @@
-
 import logging
 import random
+import time
 from datetime import datetime
 from pathlib import Path
+from pprint import pformat
+import shutil
 
-import numpy as np
 import torch
-from monai.losses import DiceLoss
-from torch import logical_and as l_and, logical_not as l_not
+import yaml
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 
 from src.dataset.BUSI_dataloader import BUSI_dataloaders
 from src.models.segmentation.BTS_UNet import BTSUNet
+from src.utils.metrics import dice_score_from_tensor
 from src.utils.miscellany import init_log
 from src.utils.miscellany import seed_everything
-from src.utils.metrics import dice_score_from_tensor
 from src.utils.models import inference
+from src.utils.models import init_loss_function
+from src.utils.models import init_optimizer
+from src.utils.models import init_segmentation_model
 from src.utils.models import load_pretrained_model
 
 
-def train_one_epoch(epoch_index, tb_writer):
+def train_one_epoch():
     running_training_loss = 0.
     running_dice = 0.
     last_loss = 0.
@@ -50,74 +53,16 @@ def train_one_epoch(epoch_index, tb_writer):
         # Adjust learning weights
         optimizer.step()
 
-        # Gather data and report
-        # if i % 10 == 0:
-        #     last_loss = running_loss / 10  # loss per batch
-        #     # logging.info('  batch {} loss: {}'.format(i + 1, last_loss))
-        #     tb_x = epoch_index * len(training_loader) + i + 1
-        #     tb_writer.add_scalar('Loss/train', last_loss, tb_x)
-        #     running_loss = 0.
-
         # measuring DICE
         if type(outputs) == list:
             outputs = outputs[-1]
-        # masks = masks.detach().cpu().numpy()
-        # outputs = torch.sigmoid(outputs).detach().cpu().numpy() > .5
         outputs = torch.sigmoid(outputs) > .5
         dice = dice_score_from_tensor(masks, outputs)
         running_dice += dice
 
     return running_training_loss / (k + 1), running_dice / (k + 1)
 
-
-seed_everything(1993)
-if torch.cuda.is_available():
-    dev = "cuda:0"
-else:
-    dev = "cpu"
-
-transforms = torch.nn.Sequential(
-    # transforms.RandomCrop(128, pad_if_needed=True),
-    transforms.RandomHorizontalFlip(p=0.5),
-    transforms.RandomVerticalFlip(p=0.5),
-    transforms.RandomRotation(degrees=random.choice([30, 60, 90, 120]))
-)
-
-training_loader, validation_loader, test_loader = BUSI_dataloaders(seed=1993, batch_size=1, transforms=transforms,
-                                                                   train_size=0.8, augmentations=True,
-                                                                   normalization=None)
-# model = UNet(spatial_dims=2, in_channels=1, out_channels=1, channels=(16, 32, 64, 128), strides=(2, 2, 2)).to(dev)
-model = BTSUNet(sequences=2, regions=1, width=24, deep_supervision=True).to(dev)
-# model = SegResNet(spatial_dims=2, init_filters=16, in_channels=2, out_channels=1).to(dev)
-# model = VNet(spatial_dims=2, in_channels=2, out_channels=1).to(dev)
-optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-loss_fn = DiceLoss(include_background=True, sigmoid=True, smooth_dr=1, smooth_nr=1, squared_pred=True)
-
-# Initializing in a separate cell so we can easily add more epochs to the same run
-timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-Path(f"runs/{timestamp}/segs/").mkdir(parents=True, exist_ok=True)
-# init log
-# init_time = time.perf_counter()
-init_log(log_name=f"./runs/{timestamp}/execution.log")
-# logging.info(args)
-
-
-writer = SummaryWriter('runs/{}'.format(timestamp))
-epoch_number = 0
-EPOCHS = 5000
-
-best_validation_loss = 1_000_000.
-patience = 0
-max_patience = 100
-for epoch in range(EPOCHS):
-
-    # Make sure gradient tracking is on, and do a pass over the data
-    model.train(True)
-    avg_train_loss, avg_dice = train_one_epoch(epoch_number, writer)
-
-    # We don't need gradients on to do reporting
-    model.train(False)
-
+def validate_one_epoch():
     running_validation_loss = 0.0
     running_validation_dice = 0.0
     for i, validation_data in enumerate(validation_loader):
@@ -138,39 +83,102 @@ for epoch in range(EPOCHS):
         dice = dice_score_from_tensor(validation_masks, validation_outputs)
         running_validation_dice += dice
 
-    avg_validation_loss = running_validation_loss / (i+1)
-    avg_validation_dice = running_validation_dice / (i+1)
+    avg_validation_loss = running_validation_loss / (i + 1)
+    avg_validation_dice = running_validation_dice / (i + 1)
+
+    return avg_validation_loss, avg_validation_dice
+
+# start time
+init_time = time.perf_counter()
+
+# initializing folder structures and log
+timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+Path(f"runs/{timestamp}/segs/").mkdir(parents=True, exist_ok=True)
+init_log(log_name=f"./runs/{timestamp}/execution.log")
+
+# loading config file
+with open('./src/config.yaml') as f:
+    config = yaml.load(f, Loader=yaml.FullLoader)
+    logging.info(pformat(config))
+shutil.copyfile('./src/config.yaml', f'./runs/{timestamp}/config.yaml')
+
+config_model = config['model']
+config_opt = config['optimizer']
+config_loss = config['loss']
+config_training = config['training']
+config_data = config['data']
+
+# initializing seed and gpu if possible
+seed_everything(config_training['seed'])
+if torch.cuda.is_available():
+    dev = "cuda:0"
+    logging.info("GPU will be used to train the model")
+else:
+    dev = "cpu"
+    logging.info("CPU will be used to train the model")
+
+
+# initializing experiment's objects
+model = init_segmentation_model(architecture=config_model['architecture'], sequences=config_model['sequences'],
+                                width=config_model['width'], deep_supervision=config_model['deep_supervision'],
+                                save_folder=Path(f'./runs/{timestamp}/')).to(dev)
+optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
+loss_fn = init_loss_function(loss_function=config_loss['function'])
+
+transforms = torch.nn.Sequential(
+    # transforms.RandomCrop(128, pad_if_needed=True),
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomVerticalFlip(p=0.5),
+    # transforms.RandomRotation(degrees=random.choice([30, 60, 90, 120]))
+    transforms.RandomRotation(degrees=random.choice(range(0, 360)))
+)
+
+training_loader, validation_loader, test_loader = BUSI_dataloaders(seed=config_training['seed'],
+                                                                   batch_size=config_data['batch_size'],
+                                                                   transforms=transforms,
+                                                                   train_size=config_data['train_size'],
+                                                                   augmentations=True,
+                                                                   normalization=None)
+
+
+best_validation_loss = 1_000_000.
+patience = 0
+for epoch in range(config_training['epochs']):
+
+    # Make sure gradient tracking is on, and do a pass over the data
+    model.train(True)
+    avg_train_loss, avg_dice = train_one_epoch()
+
+    # We don't need gradients on to do reporting
+    model.train(False)
+    avg_validation_loss, avg_validation_dice = validate_one_epoch()
+
+    # logging results of current epoch
     logging.info(f'EPOCH {epoch} --> '
                  f'|| Training loss {avg_train_loss:.4f} '
                  f'|| Validation loss {avg_validation_loss:.4f} '
                  f'|| Training DICE {avg_dice:.4f} '
                  f'|| Validation DICE  {avg_validation_dice:.4f} ||')
-    # Log the running loss averaged per batch for both training and validation
-    # writer.add_scalars('Training vs. Validation Loss',
-    #                    { 'Training' : avg_train_loss, 'Validation' : avg_vloss},
-    #                    epoch_number + 1)
-    # writer.flush()
 
     # Track best performance, and save the model's state
     if avg_validation_loss < best_validation_loss:
-        patience = 0
+        patience = 0  # restarting patience
         best_validation_loss = avg_validation_loss
-        # model_path = 'model_{}_{}'.format(timestamp, epoch_number)
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler': 'scheduler',
             'val_loss': best_validation_loss
         }, f'runs/{timestamp}/model_{timestamp}')
     else:
         patience += 1
 
     # early stopping
-    if patience > max_patience:
+    if patience > config_training['max_patience']:
         logging.info(f"\nValidation loss did not improve over the last {patience} epochs. Stopping training")
         break
 
-    epoch_number += 1
 
 logging.info(f"\nTesting phase")
 
@@ -185,6 +193,10 @@ logging.info(results)
 logging.info(results.DICE.mean())
 logging.info(results.DICE.median())
 logging.info(results.DICE.max())
+
+
+end_time = time.perf_counter()
+logging.info(f"Total time: {end_time-init_time:.2f}")
 #
 # logging.info(results[results['class'] != 'normal'].DICE.mean())
 # logging.info(results[results['class'] != 'normal'].DICE.median())

@@ -1,17 +1,29 @@
 import warnings
 warnings.filterwarnings('ignore')
+import numpy as np
+import logging
+import os
+import sys
 import pandas as pd
 import cv2
 import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from src.utils.metrics import calculate_metrics
+from pathlib import Path
+from src.models.segmentation.BTS_UNet import BTSUNet
+from monai.networks.nets import UNet, VNet, SegResNet
+from monai.losses import DiceLoss, DiceFocalLoss, GeneralizedDiceLoss, DiceCELoss
 
 
 def load_pretrained_model(model: nn.Module, ckpt_path: str):
-    checkpoint = torch.load(ckpt_path)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    if os.path.isfile(ckpt_path):
+        checkpoint = torch.load(ckpt_path)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        logging.info(f"Loaded checkpoint '{ckpt_path}'. Last epoch: {checkpoint['epoch']}")
+    else:
+        raise ValueError(f"\n\t-> No checkpoint found at '{ckpt_path}'")
 
     return model
 
@@ -62,7 +74,106 @@ def inference(model: torch.nn.Module, test_loader: torch.utils.data.DataLoader, 
 
     return results
 
-def save_segmentation(seg, path):
+
+def save_segmentation(seg: np.array, path: str):
     seg = seg[0, 0, :, :].astype(int)
     seg[seg > 0] = 255
     cv2.imwrite(path, seg)
+
+
+def count_parameters(model: torch.nn.Module) -> int:
+    """
+    This function counts the trainable parameters in a model.
+
+    Params:
+    *******
+        - model (torch.nn.Module): Torch model
+
+    Return:
+    *******
+        - Int: Number of parameters
+    """
+
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+def init_segmentation_model(
+        architecture: str,
+        sequences: int = 1,
+        regions: int = 1,
+        width: int = 48,
+        save_folder: Path = None,
+        deep_supervision: bool = False
+) -> torch.nn.Module:
+    """
+    This function implement the architecture chosen.
+
+    Params:
+    *******
+        - architecture: architecture chosen
+
+    Return:
+    *******
+        - et_present: it is true if the segmentation possess the ET region
+        - img_segmentation: stack of images of the regions
+    """
+
+    logging.info(f"Creating {architecture} model")
+    logging.info(f"The model will be fed with {sequences} sequences")
+
+    if architecture == 'BTSUNet':
+        model = BTSUNet(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'UNet':
+        model = UNet(spatial_dims=2, in_channels=sequences, out_channels=regions,
+                     channels=(width, 2*width, 4*width, 8*width), strides=(2, 2, 2))
+    elif architecture == 'VNet':
+        model = VNet(spatial_dims=2, in_channels=sequences, out_channels=regions)
+    elif architecture == 'SegResNet':
+        model = SegResNet(spatial_dims=2, init_filters=width, in_channels=sequences, out_channels=regions)
+    else:
+        model = torch.nn.Module()
+        assert "The model selected does not exist. " \
+               "Please, chose some of the following architectures: 3DUNet, VNet, ResidualUNet, ShallowUNet, DeepUNet"
+
+    # Saving the model scheme in a .txt file
+    if save_folder is not None:
+        model_file = save_folder / "model.txt"
+        with model_file.open("w") as f:
+            print(model, file=f)
+
+    logging.info(model)
+    logging.info(f"Total number of trainable parameters: {count_parameters(model)}")
+
+    return model
+
+
+def init_optimizer(model: torch.nn.Module, optimizer: str, learning_rate: float = 0.001) -> torch.optim:
+    if optimizer == "Adam":
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, eps=1e-4)
+    elif optimizer == "SGD":
+        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, nesterov=True)
+    elif optimizer == "AdamW":
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+    else:
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9, nesterov=True)
+
+    return optimizer
+
+
+def init_loss_function(loss_function: str = "dice") -> torch.nn.Module:
+    if loss_function == 'DICE':
+        loss_function_criterion = DiceLoss(include_background=True, sigmoid=True, smooth_dr=1, smooth_nr=1,
+                                           squared_pred=True)
+    elif loss_function == "FocalDICE":
+        loss_function_criterion = DiceFocalLoss(include_background=True, sigmoid=True, squared_pred=True)
+    elif loss_function == "GeneralizedDICE":
+        loss_function_criterion = GeneralizedDiceLoss(include_background=True, sigmoid=True)
+    elif loss_function == "CrossentropyDICE":
+        loss_function_criterion = DiceCELoss(include_background=True, sigmoid=True, squared_pred=True)
+    elif loss_function == "Jaccard":
+        loss_function_criterion = DiceLoss(include_background=True, sigmoid=True, jaccard=True, reduction="sum")
+    else:
+        print("Select a loss function allowed: ['DICE', 'FocalDICE', 'GeneralizedDICE', 'CrossentropyDICE', 'Jaccard']")
+        sys.exit()
+
+    return loss_function_criterion
