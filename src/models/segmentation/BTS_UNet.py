@@ -93,7 +93,9 @@ class BTSUNet(nn.Module):
         self.decoder1 = LevelBlock(widths[0] * 2, widths[0], widths[0] // 2)
 
         # Upsample, downsample and output steps
-        self.upsample = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        # self.upsample = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        # the mode nearest (algorithm of interpolation) is deterministic, ensuring reproducibility
+        self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
         self.downsample = nn.MaxPool2d(2, 2)
 
         # Output
