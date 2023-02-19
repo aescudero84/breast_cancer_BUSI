@@ -6,16 +6,6 @@ import pprint
 import logging
 import argparse
 import numpy as np
-import pandas as pd
-from typing import Tuple
-from torch.cuda.amp import autocast
-from sklearn.metrics import accuracy_score
-from SimpleITK import GetImageFromArray, GetArrayFromImage, WriteImage, ReadImage
-# from ..utils.metrics import METRICS
-# from ..utils.metrics import calculate_metrics
-# from ..dataset.BraTS_dataset import recover_initial_resolution
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 
 def save_args(args: argparse.Namespace):
@@ -72,7 +62,7 @@ def seed_everything(seed: int):
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.benchmark = False
 
 
 def count_pixels(segmentation):
