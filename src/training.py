@@ -1,18 +1,16 @@
 import logging
-import random
+import shutil
 import time
 from datetime import datetime
 from pathlib import Path
 from pprint import pformat
-import shutil
 
+import numpy as np
 import torch
 import yaml
-from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 
 from src.dataset.BUSI_dataloader import BUSI_dataloaders
-from src.models.segmentation.BTS_UNet import BTSUNet
 from src.utils.metrics import dice_score_from_tensor
 from src.utils.miscellany import init_log
 from src.utils.miscellany import seed_everything
@@ -26,7 +24,6 @@ from src.utils.models import load_pretrained_model
 def train_one_epoch():
     running_training_loss = 0.
     running_dice = 0.
-    last_loss = 0.
 
     # Iterating over training loader
     for k, data in enumerate(training_loader):
@@ -60,7 +57,8 @@ def train_one_epoch():
         dice = dice_score_from_tensor(masks, outputs)
         running_dice += dice
 
-    return running_training_loss / (k + 1), running_dice / (k + 1)
+    return running_training_loss / training_loader.__len__(), running_dice / training_loader.__len__()
+
 
 def validate_one_epoch():
     running_validation_loss = 0.0
@@ -83,10 +81,11 @@ def validate_one_epoch():
         dice = dice_score_from_tensor(validation_masks, validation_outputs)
         running_validation_dice += dice
 
-    avg_validation_loss = running_validation_loss / (i + 1)
-    avg_validation_dice = running_validation_dice / (i + 1)
+    avg_validation_loss = running_validation_loss / validation_loader.__len__()
+    avg_validation_dice = running_validation_dice / validation_loader.__len__()
 
     return avg_validation_loss, avg_validation_dice
+
 
 # start time
 init_time = time.perf_counter()
@@ -117,7 +116,6 @@ else:
     dev = "cpu"
     logging.info("CPU will be used to train the model")
 
-
 # initializing experiment's objects
 model = init_segmentation_model(architecture=config_model['architecture'], sequences=config_model['sequences'],
                                 width=config_model['width'], deep_supervision=config_model['deep_supervision'],
@@ -130,16 +128,16 @@ transforms = torch.nn.Sequential(
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.RandomVerticalFlip(p=0.5),
     # transforms.RandomRotation(degrees=random.choice([30, 60, 90, 120]))
-    transforms.RandomRotation(degrees=random.choice(range(0, 360)))
+    transforms.RandomRotation(degrees=np.random.choice(range(0, 360)))
 )
 
 training_loader, validation_loader, test_loader = BUSI_dataloaders(seed=config_training['seed'],
                                                                    batch_size=config_data['batch_size'],
                                                                    transforms=transforms,
                                                                    train_size=config_data['train_size'],
-                                                                   augmentations=True,
-                                                                   normalization=None)
-
+                                                                   augmentations=None,
+                                                                   normalization=None,
+                                                                   classes=config_data['classes'])
 
 best_validation_loss = 1_000_000.
 patience = 0
@@ -152,13 +150,6 @@ for epoch in range(config_training['epochs']):
     # We don't need gradients on to do reporting
     model.train(False)
     avg_validation_loss, avg_validation_dice = validate_one_epoch()
-
-    # logging results of current epoch
-    logging.info(f'EPOCH {epoch} --> '
-                 f'|| Training loss {avg_train_loss:.4f} '
-                 f'|| Validation loss {avg_validation_loss:.4f} '
-                 f'|| Training DICE {avg_dice:.4f} '
-                 f'|| Validation DICE  {avg_validation_dice:.4f} ||')
 
     # Track best performance, and save the model's state
     if avg_validation_loss < best_validation_loss:
@@ -174,18 +165,22 @@ for epoch in range(config_training['epochs']):
     else:
         patience += 1
 
+    # logging results of current epoch
+    logging.info(f'EPOCH {epoch} --> '
+                 f'|| Training loss {avg_train_loss:.4f} '
+                 f'|| Validation loss {avg_validation_loss:.4f} '
+                 f'|| Training DICE {avg_dice:.4f} '
+                 f'|| Validation DICE  {avg_validation_dice:.4f} '
+                 f'|| Patience: {patience}')
+
     # early stopping
     if patience > config_training['max_patience']:
         logging.info(f"\nValidation loss did not improve over the last {patience} epochs. Stopping training")
         break
 
-
 logging.info(f"\nTesting phase")
 
-# model = UNet(spatial_dims=2, in_channels=1, out_channels=1, channels=(16, 32, 64, 128), strides=(2, 2, 2)).to(dev)
-model = BTSUNet(sequences=2, regions=1, width=24, deep_supervision=True).to(dev)
 model = load_pretrained_model(model, f'runs/{timestamp}/model_{timestamp}')
-# model = pretrained_model(model, 'model_20230131_142233')
 results = inference(model=model, test_loader=test_loader, path=f"runs/{timestamp}", device=dev)
 
 logging.info(results)
@@ -194,14 +189,5 @@ logging.info(results.DICE.mean())
 logging.info(results.DICE.median())
 logging.info(results.DICE.max())
 
-
 end_time = time.perf_counter()
-logging.info(f"Total time: {end_time-init_time:.2f}")
-#
-# logging.info(results[results['class'] != 'normal'].DICE.mean())
-# logging.info(results[results['class'] != 'normal'].DICE.median())
-# logging.info(results[results['class'] != 'normal'].DICE.max())
-
-# logging.info(results[(results['class'] != 'normal') & (results.dice > 0)].dice.mean())
-# logging.info(results[(results['class'] != 'normal') & (results.dice > 0)].dice.median())
-# logging.info(results[(results['class'] != 'normal') & (results.dice > 0)].dice.max())
+logging.info(f"Total time: {end_time - init_time:.2f}")
