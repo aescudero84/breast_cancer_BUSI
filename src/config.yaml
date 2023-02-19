@@ -1,6 +1,6 @@
 model: # model hyper-parameters
-  architecture: BTSUNet
-  sequences: 2
+  architecture: TestUNet
+  sequences: 1
   width: 24
   deep_supervision: True
 
@@ -15,8 +15,9 @@ training:
   debug: False
   seed: 1993
   epochs: 5000
-  max_patience: 100
+  max_patience: 50
 
 data:
   batch_size: 1
   train_size: 0.8
+  classes: [benign, malignant]
