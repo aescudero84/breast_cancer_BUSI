@@ -12,6 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 from src.utils.metrics import calculate_metrics
 from pathlib import Path
 from src.models.segmentation.BTS_UNet import BTSUNet
+from src.models.segmentation.Test_UNet import TestUNet
 from monai.networks.nets import UNet, VNet, SegResNet
 from monai.losses import DiceLoss, DiceFocalLoss, GeneralizedDiceLoss, DiceCELoss
 
@@ -123,6 +124,8 @@ def init_segmentation_model(
 
     if architecture == 'BTSUNet':
         model = BTSUNet(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'TestUNet':
+        model = TestUNet(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
     elif architecture == 'UNet':
         model = UNet(spatial_dims=2, in_channels=sequences, out_channels=regions,
                      channels=(width, 2*width, 4*width, 8*width), strides=(2, 2, 2))
