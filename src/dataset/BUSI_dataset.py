@@ -80,8 +80,25 @@ class BUSI(Dataset):
             image = min_max_scaler(image)
 
         # Augmentations
-        clahe = cv2.createCLAHE(clipLimit=5, tileGridSize=(4, 4))
-        aug1 = torch.unsqueeze(torch.as_tensor(clahe.apply(patient_info['image']), dtype=torch.float32), 0)
+        if self.augmentations:
+            aumengs = []
+            clahe = cv2.createCLAHE(clipLimit=5, tileGridSize=(4, 4))
+            aumengs.append(torch.unsqueeze(torch.as_tensor(clahe.apply(patient_info['image']), dtype=torch.float32), 0))
+
+            # brightness
+            brightness_matrix = np.ones(patient_info['image'].shape, dtype='uint8') * 80
+            img_brighter = cv2.add(patient_info['image'], brightness_matrix)
+            img_darker = cv2.subtract(patient_info['image'], brightness_matrix)
+            aumengs.append(torch.unsqueeze(torch.as_tensor(img_brighter, dtype=torch.float32), 0))
+            aumengs.append(torch.unsqueeze(torch.as_tensor(img_darker, dtype=torch.float32), 0))
+
+            # contrast
+            matrix1 = np.ones(patient_info['image'].shape) * .02
+            matrix2 = np.ones(patient_info['image'].shape) * 1.5
+            img_low_contrast = np.uint8(cv2.multiply(np.float64(patient_info['image']), matrix1))
+            img_high_contrast = np.uint8(np.clip(cv2.multiply(np.float64(patient_info['image']), matrix2), 0, 255))
+            aumengs.append(torch.unsqueeze(torch.as_tensor(img_high_contrast, dtype=torch.float32), 0))
+            aumengs.append(torch.unsqueeze(torch.as_tensor(img_low_contrast, dtype=torch.float32), 0))
 
         # apply transformations without augmentations
         if self.transforms is not None and self.augmentations is None:
@@ -91,12 +108,13 @@ class BUSI(Dataset):
 
         # apply transformations with augmentations
         if self.transforms is not None and self.augmentations:
-            joined = self.transforms(torch.cat([mask, image, aug1], dim=0))
+            joined = torch.cat([mask, image] + aumengs, dim=0)
+            joined = self.transforms(joined)
             mask = torch.unsqueeze(joined[0, :, :], 0)
             image = joined[1:, :, :]
 
         if self.transforms is None and self.augmentations:
-            image = torch.cat([image, aug1], dim=0)
+            image = torch.cat([image] + aumengs, dim=0)
 
         # if self.normalization is not None:
         #     # image = torch.cat([image, aug1], dim=0)
