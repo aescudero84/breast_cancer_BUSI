@@ -14,17 +14,24 @@ from src.dataset.BUSI_dataset import BUSI
 
 
 def BUSI_dataloaders(seed, batch_size, transforms, augmentations=None, normalization=None, train_size=0.8,
-                     path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed/"):
+                     classes=None, path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed/"):
+
+    # classes to use by default
+    if classes is None:
+        classes = ['bening', 'malignant']
 
     # Checking if the path, where the images are, exists
     path_images = Path(path_images).resolve()
     assert path_images.exists(), f"Path '{path_images}' it doesn't exist"
     log.info(f"Images are contained in the following path: {path_images}")
 
+    # loading mapping file
+    mapping = pd.read_csv(f"{path_images}/mapping_128.csv")
+
+    # filtering specific classes
+    mapping = mapping[mapping['class'].isin(classes)]
+
     # Splitting the mapping dataset into train_mapping, val_mapping and test_mapping
-    mapping = pd.read_csv(f"{path_images}/mapping.csv")
-    # mapping = mapping[mapping['class'] == 'benign']
-    mapping = mapping[mapping['class'] != 'normal']
     train_mapping, val_mapping_ = train_test_split(mapping, train_size=train_size, random_state=int(seed), shuffle=True,
                                                    stratify=mapping['class'])
     val_mapping, test_mapping = train_test_split(val_mapping_, test_size=0.5, random_state=int(seed), shuffle=True,
