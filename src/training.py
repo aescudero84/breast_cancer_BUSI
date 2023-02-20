@@ -10,7 +10,7 @@ import torch
 import yaml
 from torchvision import transforms
 
-from src.dataset.BUSI_dataloader import BUSI_dataloaders
+from src.dataset.BUSI_dataloader import BUSI_dataloader
 from src.utils.metrics import dice_score_from_tensor
 from src.utils.miscellany import init_log
 from src.utils.miscellany import seed_everything
@@ -89,7 +89,6 @@ def validate_one_epoch():
 
 # start time
 init_time = time.perf_counter()
-
 # initializing folder structures and log
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 Path(f"runs/{timestamp}/segs/").mkdir(parents=True, exist_ok=True)
@@ -131,17 +130,18 @@ transforms = torch.nn.Sequential(
     transforms.RandomRotation(degrees=np.random.choice(range(0, 360)))
 )
 
-training_loader, validation_loader, test_loader = BUSI_dataloaders(seed=config_training['seed'],
-                                                                   batch_size=config_data['batch_size'],
-                                                                   transforms=transforms,
-                                                                   train_size=config_data['train_size'],
-                                                                   augmentations=None,
-                                                                   normalization=None,
-                                                                   classes=config_data['classes'])
+training_loader, validation_loader, test_loader = BUSI_dataloader(seed=config_training['seed'],
+                                                                  batch_size=config_data['batch_size'],
+                                                                  transforms=transforms,
+                                                                  train_size=config_data['train_size'],
+                                                                  augmentations=None,
+                                                                  normalization=None,
+                                                                  classes=config_data['classes'])
 
 best_validation_loss = 1_000_000.
 patience = 0
 for epoch in range(config_training['epochs']):
+    start_epoch_time = time.perf_counter()
 
     # Make sure gradient tracking is on, and do a pass over the data
     model.train(True)
@@ -166,12 +166,14 @@ for epoch in range(config_training['epochs']):
         patience += 1
 
     # logging results of current epoch
+    end_epoch_time = time.perf_counter()
     logging.info(f'EPOCH {epoch} --> '
                  f'|| Training loss {avg_train_loss:.4f} '
                  f'|| Validation loss {avg_validation_loss:.4f} '
                  f'|| Training DICE {avg_dice:.4f} '
                  f'|| Validation DICE  {avg_validation_dice:.4f} '
-                 f'|| Patience: {patience}')
+                 f'|| Patience: {patience} '
+                 f'|| Epoch time: {end_epoch_time-start_epoch_time:.4f}')
 
     # early stopping
     if patience > config_training['max_patience']:
