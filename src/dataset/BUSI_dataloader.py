@@ -81,7 +81,7 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, augmentations=None, normali
 
     # splitting dataset into train-val-test CV
     fold_trainset, fold_valset, fold_testset = [], [], []
-    kfold = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=1)
+    kfold = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=int(seed))
     for n, (train_ix, test_ix) in enumerate(kfold.split(mapping, mapping['class'])):
         train_val_mapping, test_mapping = mapping.iloc[train_ix], mapping.iloc[test_ix]
         test_mapping['fold'] = [n] * len(test_mapping)
@@ -93,9 +93,6 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, augmentations=None, normali
         print(train_mapping)
         print(val_mapping)
         print(test_mapping)
-        train_mapping.to_csv(f"train_fold_{n}.csv")
-        val_mapping.to_csv(f"val_fold_{n}.csv")
-        test_mapping.to_csv(f"test_fold_{n}.csv")
 
         # append the corresponding subset to train-val-test sets for each CV
         fold_trainset.append(BUSI(mapping_file=train_mapping, transforms=transforms, augmentations=augmentations, normalization=normalization))
@@ -103,9 +100,9 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, augmentations=None, normali
         fold_testset.append(BUSI(mapping_file=test_mapping, transforms=transforms, augmentations=augmentations, normalization=normalization))
 
     # Creating a list of dataloaders. Each component of the list corresponds to a CV fold
-    train_loader = [DataLoader(fold, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=4, pin_memory=True) for fold in fold_trainset]
-    val_loader = [DataLoader(fold, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=4, pin_memory=True) for fold in fold_valset]
-    test_loader = [DataLoader(fold, batch_size=1, drop_last=False, num_workers=4, pin_memory=True) for fold in fold_testset]
+    train_loader = [DataLoader(fold, batch_size=batch_size, shuffle=True) for fold in fold_trainset]
+    val_loader = [DataLoader(fold, batch_size=1, shuffle=True) for fold in fold_valset]
+    test_loader = [DataLoader(fold, batch_size=1) for fold in fold_testset]
 
     return train_loader, val_loader, test_loader
 
