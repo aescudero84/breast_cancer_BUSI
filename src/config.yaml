@@ -1,11 +1,11 @@
 model: # model hyper-parameters
-  architecture: TestUNet
+  architecture: TestUNet2
   sequences: 1
   width: 24
   deep_supervision: True
 
 optimizer:
-  opt: SGD
+  opt: Adam
   lr: 0.001
 
 loss:
@@ -15,7 +15,8 @@ training:
   debug: False
   seed: 1993
   epochs: 5000
-  max_patience: 50
+  max_patience: 100
+  CV: 10
 
 data:
   batch_size: 1

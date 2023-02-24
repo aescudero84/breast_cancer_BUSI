@@ -4,12 +4,13 @@ import time
 from datetime import datetime
 from pathlib import Path
 from pprint import pformat
-
+import random
 import numpy as np
 import torch
 import yaml
 from torchvision import transforms
-
+from torch.cuda.amp import autocast, GradScaler
+from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
 from src.dataset.BUSI_dataloader import BUSI_dataloader
 from src.utils.metrics import dice_score_from_tensor
 from src.utils.miscellany import init_log
@@ -30,8 +31,10 @@ def train_one_epoch():
         inputs, masks = data['image'].to(dev), data['mask'].to(dev)
 
         # Zero your gradients for every batch!
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
 
+        # enable auto-casting
+        # with autocast(enabled=False):
         # Make predictions for this batch
         outputs = model(inputs)
 
@@ -43,11 +46,14 @@ def train_one_epoch():
             loss = loss_fn(outputs, masks)
         if not torch.isnan(loss):
             running_training_loss += loss.item()
-            loss.backward()
         else:
             logging.info("NaN in model loss!!")
 
-        # Adjust learning weights
+        # Performing backward step through scaler methodology
+        # scaler.scale(loss).backward()
+        # scaler.step(optimizer)
+        # scaler.update()
+        loss.backward()
         optimizer.step()
 
         # measuring DICE
@@ -56,6 +62,9 @@ def train_one_epoch():
         outputs = torch.sigmoid(outputs) > .5
         dice = dice_score_from_tensor(masks, outputs)
         running_dice += dice
+
+        del loss
+        del outputs
 
     return running_training_loss / training_loader.__len__(), running_dice / training_loader.__len__()
 
@@ -121,13 +130,18 @@ model = init_segmentation_model(architecture=config_model['architecture'], seque
                                 save_folder=Path(f'./runs/{timestamp}/')).to(dev)
 optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
 loss_fn = init_loss_function(loss_function=config_loss['function'])
+# scaler = GradScaler()  # create a GradScaler object for scaling the gradients
+# scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, min_lr=1e-6, verbose=True)
+scheduler = CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-6)
 
 transforms = torch.nn.Sequential(
     # transforms.RandomCrop(128, pad_if_needed=True),
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.RandomVerticalFlip(p=0.5),
     # transforms.RandomRotation(degrees=random.choice([30, 60, 90, 120]))
-    transforms.RandomRotation(degrees=np.random.choice(range(0, 360)))
+    transforms.RandomRotation(degrees=np.random.choice(range(0, 360))),
+    # transforms.GaussianBlur(kernel_size=(5, 5), sigma=(1.5, 1.5))
+
 )
 
 training_loader, validation_loader, test_loader = BUSI_dataloader(seed=config_training['seed'],
@@ -149,7 +163,11 @@ for epoch in range(config_training['epochs']):
 
     # We don't need gradients on to do reporting
     model.train(False)
-    avg_validation_loss, avg_validation_dice = validate_one_epoch()
+    with torch.no_grad():
+        avg_validation_loss, avg_validation_dice = validate_one_epoch()
+
+    # # Update the learning rate at the end of each epoch
+    scheduler.step(avg_validation_loss)
 
     # Track best performance, and save the model's state
     if avg_validation_loss < best_validation_loss:
