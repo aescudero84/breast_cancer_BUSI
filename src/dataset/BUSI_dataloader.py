@@ -96,8 +96,8 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, augmentations=None, normali
 
         # append the corresponding subset to train-val-test sets for each CV
         fold_trainset.append(BUSI(mapping_file=train_mapping, transforms=transforms, augmentations=augmentations, normalization=normalization))
-        fold_valset.append(BUSI(mapping_file=val_mapping, transforms=transforms, augmentations=augmentations, normalization=normalization))
-        fold_testset.append(BUSI(mapping_file=test_mapping, transforms=transforms, augmentations=augmentations, normalization=normalization))
+        fold_valset.append(BUSI(mapping_file=val_mapping, transforms=None, augmentations=augmentations, normalization=normalization))
+        fold_testset.append(BUSI(mapping_file=test_mapping, transforms=None, augmentations=augmentations, normalization=normalization))
 
     # Creating a list of dataloaders. Each component of the list corresponds to a CV fold
     train_loader = [DataLoader(fold, batch_size=batch_size, shuffle=True) for fold in fold_trainset]

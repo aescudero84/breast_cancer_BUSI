@@ -205,9 +205,9 @@ results = inference(model=model, test_loader=test_loader, path=f"runs/{timestamp
 
 logging.info(results)
 
-logging.info(results.DICE.mean())
-logging.info(results.DICE.median())
-logging.info(results.DICE.max())
+logging.info(results.mean())
+logging.info(results.median())
+logging.info(results.max())
 
 end_time = time.perf_counter()
 logging.info(f"Total time: {end_time - init_time:.2f}")

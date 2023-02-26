@@ -12,6 +12,7 @@ import yaml
 from torchvision import transforms
 
 from src.dataset.BUSI_dataloader import BUSI_dataloader, BUSI_dataloader_CV
+from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
 from src.utils.metrics import dice_score_from_tensor
 from src.utils.miscellany import init_log
 from src.utils.miscellany import seed_everything
@@ -31,7 +32,7 @@ def train_one_epoch():
         inputs, masks = data['image'].to(dev), data['mask'].to(dev)
 
         # Zero your gradients for every batch!
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
 
         # Make predictions for this batch
         outputs = model(inputs)
@@ -44,11 +45,11 @@ def train_one_epoch():
             loss = loss_fn(outputs, masks)
         if not torch.isnan(loss):
             running_training_loss += loss.item()
-            loss.backward()
         else:
             logging.info("NaN in model loss!!")
 
-        # Adjust learning weights
+        # Performing backward step through scaler methodology
+        loss.backward()
         optimizer.step()
 
         # measuring DICE
@@ -57,6 +58,9 @@ def train_one_epoch():
         outputs = torch.sigmoid(outputs) > .5
         dice = dice_score_from_tensor(masks, outputs)
         running_dice += dice
+
+        del loss
+        del outputs
 
     return running_training_loss / training_loader.__len__(), running_dice / training_loader.__len__()
 
@@ -135,7 +139,6 @@ else:
     sys.exit("This code is prepared for receiving a CV greater than 1")
 
 for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_loaders, val_loaders, test_loaders)):
-    logging.info(f"\n\n *********************  FOLD {n}  ********************* \n\n")
 
     # creating specific paths and experiment's objects for each fold
     init_time = time.perf_counter()
@@ -146,10 +149,13 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
                                     save_folder=Path(f'./runs/{timestamp}/')).to(dev)
     optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
     loss_fn = init_loss_function(loss_function=config_loss['function'])
+    scheduler = CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-6)
+    logging.info(f"\n\n *********************  FOLD {n}  ********************* \n\n")
 
     best_validation_loss = 1_000_000.
     patience = 0
     for epoch in range(config_training['epochs']):
+        start_epoch_time = time.perf_counter()
 
         # Make sure gradient tracking is on, and do a pass over the data
         model.train(True)
@@ -157,7 +163,11 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
 
         # We don't need gradients on to do reporting
         model.train(False)
-        avg_validation_loss, avg_validation_dice = validate_one_epoch()
+        with torch.no_grad():
+            avg_validation_loss, avg_validation_dice = validate_one_epoch()
+
+        # # Update the learning rate at the end of each epoch
+        scheduler.step(avg_validation_loss)
 
         # Track best performance, and save the model's state
         if avg_validation_loss < best_validation_loss:
@@ -174,12 +184,14 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
             patience += 1
 
         # logging results of current epoch
+        end_epoch_time = time.perf_counter()
         logging.info(f'EPOCH {epoch} --> '
                      f'|| Training loss {avg_train_loss:.4f} '
                      f'|| Validation loss {avg_validation_loss:.4f} '
                      f'|| Training DICE {avg_dice:.4f} '
                      f'|| Validation DICE  {avg_validation_dice:.4f} '
-                     f'|| Patience: {patience}')
+                     f'|| Patience: {patience} '
+                     f'|| Epoch time: {end_epoch_time - start_epoch_time:.4f}')
 
         # early stopping
         if patience > config_training['max_patience']:
@@ -192,9 +204,9 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
 
     logging.info(results)
 
-    logging.info(results.DICE.mean())
-    logging.info(results.DICE.median())
-    logging.info(results.DICE.max())
+    logging.info(results.mean())
+    logging.info(results.median())
+    logging.info(results.max())
 
     end_time = time.perf_counter()
     logging.info(f"Total time for fold {n}: {end_time - init_time:.2f}")
