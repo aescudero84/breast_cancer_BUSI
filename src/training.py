@@ -125,8 +125,11 @@ else:
     logging.info("CPU will be used to train the model")
 
 # initializing experiment's objects
-model = init_segmentation_model(architecture=config_model['architecture'], sequences=config_model['sequences'],
-                                width=config_model['width'], deep_supervision=config_model['deep_supervision'],
+n_augments = sum([v for k, v in config_data['augmentation'].items()])
+model = init_segmentation_model(architecture=config_model['architecture'],
+                                sequences=config_model['sequences'] + n_augments,
+                                width=config_model['width'],
+                                deep_supervision=config_model['deep_supervision'],
                                 save_folder=Path(f'./runs/{timestamp}/')).to(dev)
 optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
 loss_fn = init_loss_function(loss_function=config_loss['function'])
@@ -148,9 +151,10 @@ training_loader, validation_loader, test_loader = BUSI_dataloader(seed=config_tr
                                                                   batch_size=config_data['batch_size'],
                                                                   transforms=transforms,
                                                                   train_size=config_data['train_size'],
-                                                                  augmentations=None,
+                                                                  augmentations=config_data['augmentation'],
                                                                   normalization=None,
-                                                                  classes=config_data['classes'])
+                                                                  classes=config_data['classes'],
+                                                                  path_images=config_data['input_img'])
 
 best_validation_loss = 1_000_000.
 patience = 0

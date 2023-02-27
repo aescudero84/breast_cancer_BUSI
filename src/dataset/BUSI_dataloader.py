@@ -15,7 +15,7 @@ from src.dataset.BUSI_dataset import BUSI
 
 
 def BUSI_dataloader(seed, batch_size, transforms, augmentations=None, normalization=None, train_size=0.8,
-                    classes=None, path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed/"):
+                    classes=None, path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/"):
 
     # classes to use by default
     if classes is None:
@@ -27,7 +27,7 @@ def BUSI_dataloader(seed, batch_size, transforms, augmentations=None, normalizat
     log.info(f"Images are contained in the following path: {path_images}")
 
     # loading mapping file
-    mapping = pd.read_csv(f"{path_images}/mapping_128.csv")
+    mapping = pd.read_csv(f"{path_images}/mapping.csv")
 
     # filtering specific classes
     mapping = mapping[mapping['class'].isin(classes)]
@@ -55,14 +55,14 @@ def BUSI_dataloader(seed, batch_size, transforms, augmentations=None, normalizat
 
     # dataloader
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=4, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=True, drop_last=False, num_workers=4, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size=1, drop_last=False, num_workers=4, pin_memory=True)
 
     return train_loader, val_loader, test_loader
 
 
 def BUSI_dataloader_CV(seed, batch_size, transforms, augmentations=None, normalization=None, train_size=0.8,
-                       classes=None, n_folds=5, path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed/"):
+                       classes=None, n_folds=5, path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/"):
 
     # classes to use by default
     if classes is None:
@@ -101,7 +101,7 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, augmentations=None, normali
 
     # Creating a list of dataloaders. Each component of the list corresponds to a CV fold
     train_loader = [DataLoader(fold, batch_size=batch_size, shuffle=True) for fold in fold_trainset]
-    val_loader = [DataLoader(fold, batch_size=1, shuffle=True) for fold in fold_valset]
+    val_loader = [DataLoader(fold, batch_size=batch_size, shuffle=True) for fold in fold_valset]
     test_loader = [DataLoader(fold, batch_size=1) for fold in fold_testset]
 
     return train_loader, val_loader, test_loader

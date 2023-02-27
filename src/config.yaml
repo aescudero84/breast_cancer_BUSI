@@ -19,6 +19,13 @@ training:
   CV: 4
 
 data:
+  input_img: Datasets/Dataset_BUSI_with_GT_postprocessed_224
   batch_size: 1
   train_size: 0.8
-  classes: [benign, malignant]
+  classes: [malignant]
+  augmentation:
+    CLAHE: False
+    brightness_brighter: False
+    brightness_darker: False
+    contrast_high: False
+    contrast_low: False

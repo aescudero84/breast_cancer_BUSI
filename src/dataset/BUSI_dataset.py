@@ -28,7 +28,7 @@ def min_max_scaler(image: np.array) -> np.array:
 class BUSI(Dataset):
     """INSTANCE dataset."""
 
-    def __init__(self, mapping_file: pd.DataFrame, transforms=None, augmentations=None, normalization=None):
+    def __init__(self, mapping_file: pd.DataFrame, transforms=None, augmentations={}, normalization=None):
         super(BUSI, self).__init__()
         """
         Args:
@@ -37,7 +37,14 @@ class BUSI(Dataset):
 
         self.mapping_file = mapping_file
         self.transforms = transforms
-        self.augmentations = augmentations
+        self.augmentations = True if sum([v for k, v in augmentations.items()]) else False
+        if augmentations:
+            self.CLAHE = augmentations.get("CLAHE", False)
+            self.brightness_brighter = augmentations.get("brightness_brighter", False)
+            self.brightness_darker = augmentations.get("brightness_darker", False)
+            self.contrast_high = augmentations.get("contrast_high", False)
+            self.contrast_low = augmentations.get("contrast_low", False)
+
         self.normalization = normalization
 
         self.data = []
@@ -82,26 +89,31 @@ class BUSI(Dataset):
         # Augmentations
         if self.augmentations:
             aumengs = []
-            clahe = cv2.createCLAHE(clipLimit=5, tileGridSize=(4, 4))
-            aumengs.append(torch.unsqueeze(torch.as_tensor(clahe.apply(patient_info['image']), dtype=torch.float32), 0))
 
-            # brightness
-            brightness_matrix = np.ones(patient_info['image'].shape, dtype='uint8') * 80
-            img_brighter = cv2.add(patient_info['image'], brightness_matrix)
-            img_darker = cv2.subtract(patient_info['image'], brightness_matrix)
-            aumengs.append(torch.unsqueeze(torch.as_tensor(img_brighter, dtype=torch.float32), 0))
-            aumengs.append(torch.unsqueeze(torch.as_tensor(img_darker, dtype=torch.float32), 0))
+            if self.CLAHE:
+                clahe = cv2.createCLAHE(clipLimit=5, tileGridSize=(4, 4))
+                aumengs.append(torch.unsqueeze(torch.as_tensor(clahe.apply(patient_info['image']), dtype=torch.float32), 0))
 
-            # contrast
-            matrix1 = np.ones(patient_info['image'].shape) * .02
-            matrix2 = np.ones(patient_info['image'].shape) * 1.5
-            img_low_contrast = np.uint8(cv2.multiply(np.float64(patient_info['image']), matrix1))
-            img_high_contrast = np.uint8(np.clip(cv2.multiply(np.float64(patient_info['image']), matrix2), 0, 255))
-            aumengs.append(torch.unsqueeze(torch.as_tensor(img_high_contrast, dtype=torch.float32), 0))
-            aumengs.append(torch.unsqueeze(torch.as_tensor(img_low_contrast, dtype=torch.float32), 0))
+            if self.brightness_brighter:  # brightness
+                brightness_matrix = np.ones(patient_info['image'].shape, dtype='uint8') * 80
+                img_brighter = cv2.add(patient_info['image'], brightness_matrix)
+                aumengs.append(torch.unsqueeze(torch.as_tensor(img_brighter, dtype=torch.float32), 0))
+            if self.brightness_darker:  # brightness
+                brightness_matrix = np.ones(patient_info['image'].shape, dtype='uint8') * 80
+                img_darker = cv2.subtract(patient_info['image'], brightness_matrix)
+                aumengs.append(torch.unsqueeze(torch.as_tensor(img_darker, dtype=torch.float32), 0))
+
+            if self.contrast_low:  # contrast
+                matrix1 = np.ones(patient_info['image'].shape) * .02
+                img_low_contrast = np.uint8(cv2.multiply(np.float64(patient_info['image']), matrix1))
+                aumengs.append(torch.unsqueeze(torch.as_tensor(img_low_contrast, dtype=torch.float32), 0))
+            if self.contrast_high:  # contrast
+                matrix2 = np.ones(patient_info['image'].shape) * 1.5
+                img_high_contrast = np.uint8(np.clip(cv2.multiply(np.float64(patient_info['image']), matrix2), 0, 255))
+                aumengs.append(torch.unsqueeze(torch.as_tensor(img_high_contrast, dtype=torch.float32), 0))
 
         # apply transformations without augmentations
-        if self.transforms is not None and self.augmentations is None:
+        if self.transforms is not None and not self.augmentations:
             joined = self.transforms(torch.cat([mask, image], dim=0))
             mask = torch.unsqueeze(joined[0, :, :], 0)
             image = torch.unsqueeze(joined[1, :, :], 0)
@@ -132,11 +144,11 @@ class BUSI(Dataset):
 
 # if '__main__' == __name__:
 #
-#     mapping = pd.read_csv("./Datasets/Dataset_BUSI_with_GT_postprocessed/mapping.csv")
+#     mapping = pd.read_csv("./Datasets/Dataset_BUSI_with_GT_postprocessed_128/mapping.csv")
 #     transforms = torch.nn.Sequential(
 #         transforms.RandomCrop(500, pad_if_needed=True),
 #     )
-#     # dataset = BUSI(mapping_file="./Datasets/Dataset_BUSI_with_GT_postprocessed/mapping.csv", transform=transforms)
+#     # dataset = BUSI(mapping_file="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/mapping.csv", transform=transforms)
 #     dataset = BUSI(mapping_file=mapping, transform=None)
 #
 #     # for i in range(dataset.__len__()):

@@ -118,6 +118,7 @@ else:
     logging.info("CPU will be used to train the model")
 
 
+n_augments = sum([v for k, v in config_data['augmentation'].items()])
 transforms = torch.nn.Sequential(
     # transforms.RandomCrop(128, pad_if_needed=True),
     transforms.RandomHorizontalFlip(p=0.5),
@@ -132,9 +133,10 @@ if config_training['CV'] > 1:
                                                                   transforms=transforms,
                                                                   train_size=config_data['train_size'],
                                                                   n_folds=config_training['CV'],
-                                                                  augmentations=None,
+                                                                  augmentations=config_data['augmentation'],
                                                                   normalization=None,
-                                                                  classes=config_data['classes'])
+                                                                  classes=config_data['classes'],
+                                                                  path_images=config_data['input_img'])
 else:
     sys.exit("This code is prepared for receiving a CV greater than 1")
 
@@ -144,7 +146,8 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
     init_time = time.perf_counter()
     Path(f"runs/{timestamp}/fold_{n}/segs/").mkdir(parents=True, exist_ok=True)
     init_log(log_name=f"./runs/{timestamp}/fold_{n}/execution_fold_{n}.log")
-    model = init_segmentation_model(architecture=config_model['architecture'], sequences=config_model['sequences'],
+    model = init_segmentation_model(architecture=config_model['architecture'],
+                                    sequences=config_model['sequences'] + n_augments,
                                     width=config_model['width'], deep_supervision=config_model['deep_supervision'],
                                     save_folder=Path(f'./runs/{timestamp}/')).to(dev)
     optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
