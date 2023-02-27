@@ -1,5 +1,5 @@
 model: # model hyper-parameters
-  architecture: BTS_HDS_UNet
+  architecture: FSB_BTS_UNet
   sequences: 1
   width: 24
   deep_supervision: True

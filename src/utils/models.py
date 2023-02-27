@@ -13,7 +13,7 @@ from src.utils.metrics import calculate_metrics
 from pathlib import Path
 from src.models.segmentation.BTS_UNet import BTSUNet
 from src.models.segmentation.Test_UNet import TestUNet
-from src.models.segmentation.BTS_HDS_UNet import BTS_HDS_UNet
+from src.models.segmentation.FSB_BTS_UNet import FSB_BTS_UNet
 from monai.networks.nets import UNet, VNet, SegResNet
 from monai.losses import DiceLoss, DiceFocalLoss, GeneralizedDiceLoss, DiceCELoss
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
@@ -126,8 +126,8 @@ def init_segmentation_model(
 
     if architecture == 'BTSUNet':
         model = BTSUNet(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
-    elif architecture == 'BTS_HDS_UNet':
-        model = BTS_HDS_UNet(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'FSB_BTS_UNet':
+        model = FSB_BTS_UNet(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
     elif architecture == 'UNet':
         model = UNet(spatial_dims=2, in_channels=sequences, out_channels=regions,
                      channels=(width, 2*width, 4*width, 8*width), strides=(2, 2, 2))

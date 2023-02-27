@@ -67,7 +67,7 @@ class LevelBlock(nn.Sequential):
         )
 
 
-class BTS_HDS_UNet(nn.Module):
+class FSB_BTS_UNet(nn.Module):
     """
     This class implements a variation of 2D Unet network. Main modifications are:
         - Replacement of ReLU activation layer by LeakyReLU
@@ -75,10 +75,10 @@ class BTS_HDS_UNet(nn.Module):
 
     """
 
-    name = "BTS-HDS U-Net"
+    name = "Full-Scale-Bridge BTS U-Net"
 
     def __init__(self, sequences, regions, width, deep_supervision):
-        super(BTS_HDS_UNet, self).__init__()
+        super(FSB_BTS_UNet, self).__init__()
 
         self.deep_supervision = deep_supervision
         widths = [width * 2 ** i for i in range(4)]
@@ -198,7 +198,7 @@ if __name__ == "__main__":
     seq_input = torch.rand(1, 1, 128, 128)
     seq_ouput = torch.rand(1, 1, 128, 128)
 
-    model = BTS_HDS_UNet(sequences=1, regions=1, width=6, deep_supervision=False)
+    model = FSB_BTS_UNet(sequences=1, regions=1, width=6, deep_supervision=False)
     preds = model(seq_input)
 
     print(seq_input.shape)
