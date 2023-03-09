@@ -1,4 +1,4 @@
-import logging as log
+import logging
 from pathlib import Path
 import warnings
 warnings.filterwarnings("ignore")
@@ -24,7 +24,7 @@ def BUSI_dataloader(seed, batch_size, transforms, augmentations=None, normalizat
     # Checking if the path, where the images are, exists
     path_images = Path(path_images).resolve()
     assert path_images.exists(), f"Path '{path_images}' it doesn't exist"
-    log.info(f"Images are contained in the following path: {path_images}")
+    logging.info(f"Images are contained in the following path: {path_images}")
 
     # loading mapping file
     mapping = pd.read_csv(f"{path_images}/mapping.csv")
@@ -38,20 +38,20 @@ def BUSI_dataloader(seed, batch_size, transforms, augmentations=None, normalizat
     val_mapping, test_mapping = train_test_split(val_mapping_, test_size=0.5, random_state=int(seed), shuffle=True,
                                                  stratify=val_mapping_['class'])
 
-    print(train_mapping)
-    print(val_mapping)
-    print(test_mapping)
+    logging.info(train_mapping)
+    logging.info(val_mapping)
+    logging.info(test_mapping)
     # Creating the train-validation-test datasets
     train_dataset = BUSI(mapping_file=train_mapping, transforms=transforms, augmentations=augmentations, normalization=normalization)
     val_dataset = BUSI(mapping_file=val_mapping, transforms=None, augmentations=augmentations, normalization=normalization)
     test_dataset = BUSI(mapping_file=test_mapping, transforms=None, augmentations=augmentations, normalization=normalization)
 
-    print(f"Size of train dataset: {train_dataset.__len__()}")
-    print(f"Shape of images used for training: {train_dataset.__getitem__(0)['image'].shape}")
-    print(f"Size of validation dataset: {val_dataset.__len__()}")
-    print(f"Shape of images used for validating: {val_dataset.__getitem__(0)['image'].shape}")
-    print(f"Size of test dataset: {test_dataset.__len__()}")
-    print(f"Shape of images used for testing: {test_dataset.__getitem__(0)['image'].shape}")
+    logging.info(f"Size of train dataset: {train_dataset.__len__()}")
+    logging.info(f"Shape of images used for training: {train_dataset.__getitem__(0)['image'].shape}")
+    logging.info(f"Size of validation dataset: {val_dataset.__len__()}")
+    logging.info(f"Shape of images used for validating: {val_dataset.__getitem__(0)['image'].shape}")
+    logging.info(f"Size of test dataset: {test_dataset.__len__()}")
+    logging.info(f"Shape of images used for testing: {test_dataset.__getitem__(0)['image'].shape}")
 
     # dataloader
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=4, pin_memory=True)
@@ -71,10 +71,10 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, augmentations=None, normali
     # Checking if the path, where the images are, exists
     path_images = Path(path_images).resolve()
     assert path_images.exists(), f"Path '{path_images}' it doesn't exist"
-    log.info(f"Images are contained in the following path: {path_images}")
+    logging.info(f"Images are contained in the following path: {path_images}")
 
     # loading mapping file
-    mapping = pd.read_csv(f"{path_images}/mapping_128.csv")
+    mapping = pd.read_csv(f"{path_images}/mapping.csv")
 
     # filtering specific classes
     mapping = mapping[mapping['class'].isin(classes)]
@@ -90,9 +90,9 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, augmentations=None, normali
         train_mapping, val_mapping = train_test_split(train_val_mapping, train_size=train_size, random_state=int(seed),
                                                       shuffle=True, stratify=train_val_mapping['class'])
 
-        print(train_mapping)
-        print(val_mapping)
-        print(test_mapping)
+        logging.info(train_mapping)
+        logging.info(val_mapping)
+        logging.info(test_mapping)
 
         # append the corresponding subset to train-val-test sets for each CV
         fold_trainset.append(BUSI(mapping_file=train_mapping, transforms=transforms, augmentations=augmentations, normalization=normalization))
