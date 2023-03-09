@@ -53,7 +53,7 @@ def init_log(log_name: str):
     logging.getLogger().addHandler(console)
 
 
-def seed_everything(seed: int):
+def seed_everything(seed: int, cuda_benchmark: bool = False):
 
     os.environ['PYTHONHASHSEED'] = str(seed)
     random.seed(seed)
@@ -62,7 +62,7 @@ def seed_everything(seed: int):
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.benchmark = cuda_benchmark
 
 
 def count_pixels(segmentation):
