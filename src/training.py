@@ -116,7 +116,7 @@ config_training = config['training']
 config_data = config['data']
 
 # initializing seed and gpu if possible
-seed_everything(config_training['seed'])
+seed_everything(config_training['seed'], cuda_benchmark=config_training['cuda_benchmark'])
 if torch.cuda.is_available():
     dev = "cuda:0"
     logging.info("GPU will be used to train the model")

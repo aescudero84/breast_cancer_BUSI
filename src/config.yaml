@@ -17,12 +17,13 @@ training:
   epochs: 5000
   max_patience: 100
   CV: 4
+  cuda_benchmark: False
 
 data:
-  input_img: Datasets/Dataset_BUSI_with_GT_postprocessed_224
+  input_img: Datasets/Dataset_BUSI_with_GT_postprocessed_128
   batch_size: 1
   train_size: 0.8
-  classes: [malignant]
+  classes: [benign, malignant]
   augmentation:
     CLAHE: False
     brightness_brighter: False

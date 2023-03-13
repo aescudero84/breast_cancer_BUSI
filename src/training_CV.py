@@ -109,7 +109,7 @@ config_training = config['training']
 config_data = config['data']
 
 # initializing seed and gpu if possible
-seed_everything(config_training['seed'])
+seed_everything(config_training['seed'], cuda_benchmark=config_training['cuda_benchmark'])
 if torch.cuda.is_available():
     dev = "cuda:0"
     logging.info("GPU will be used to train the model")
@@ -124,7 +124,8 @@ transforms = torch.nn.Sequential(
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.RandomVerticalFlip(p=0.5),
     # transforms.RandomRotation(degrees=random.choice([30, 60, 90, 120]))
-    transforms.RandomRotation(degrees=np.random.choice(range(0, 360)))
+    transforms.RandomRotation(degrees=np.random.choice(range(0, 360))),
+    # transforms.RandomCrop(64)
 )
 
 if config_training['CV'] > 1:
