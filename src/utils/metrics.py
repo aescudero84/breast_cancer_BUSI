@@ -148,6 +148,11 @@ def accuracy(tp: float, tn: float, fp: float, fn: float) -> float:
     return (tp + tn) / (tp + tn + fp + fn)
 
 
+def f1_score(tp: float, fp: float, fn: float) -> float:
+
+    return (2 * tp) / (2 * tp + fp + fn)
+
+
 def dice_score(tp: float, fp: float, fn: float, gt: np.ndarray, seg: np.ndarray) -> float:
 
     if np.sum(gt) == 0:
@@ -182,7 +187,6 @@ def dice_score_from_tensor(gt: torch.tensor, seg: torch.tensor) -> float:
     gt = gt.double()
     seg = seg.double()
     tp = torch.sum(torch.logical_and(seg, gt)).double()
-    tn = torch.sum(torch.logical_and(torch.logical_not(seg), gt)).double()
     fp = torch.sum(torch.logical_and(seg, torch.logical_not(gt))).double()
     fn = torch.sum(torch.logical_and(torch.logical_not(seg), gt)).double()
 
@@ -192,3 +196,23 @@ def dice_score_from_tensor(gt: torch.tensor, seg: torch.tensor) -> float:
         dice = 2 * tp / (2 * tp + fp + fn)
 
     return dice
+
+
+def accuracy_from_tensor(ground_truth, prediction) -> float:
+
+    tp = torch.sum(torch.logical_and(prediction, ground_truth)).double()
+    tn = torch.sum(torch.logical_and(torch.logical_not(prediction), torch.logical_not(ground_truth))).double()
+    fp = torch.sum(torch.logical_and(prediction, torch.logical_not(ground_truth))).double()
+    fn = torch.sum(torch.logical_and(torch.logical_not(prediction), ground_truth)).double()
+
+    return (tp + tn) / (tp + tn + fp + fn)
+
+
+def f1_score_from_tensor(ground_truth, prediction) -> float:
+
+    tp = torch.sum(torch.logical_and(prediction, ground_truth)).double()
+    tn = torch.sum(torch.logical_and(torch.logical_not(prediction), torch.logical_not(ground_truth))).double()
+    fp = torch.sum(torch.logical_and(prediction, torch.logical_not(ground_truth))).double()
+    fn = torch.sum(torch.logical_and(torch.logical_not(prediction), ground_truth)).double()
+
+    return (2 * tp) / (2 * tp + fp + fn)
