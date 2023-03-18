@@ -15,7 +15,7 @@ from src.dataset.BUSI_dataloader import BUSI_dataloader
 from src.utils.metrics import dice_score_from_tensor
 from src.utils.miscellany import init_log
 from src.utils.miscellany import seed_everything
-from src.utils.models import inference
+from src.utils.models import inference_segmentation
 from src.utils.models import init_loss_function
 from src.utils.models import init_optimizer
 from src.utils.models import init_segmentation_model
@@ -205,7 +205,7 @@ for epoch in range(config_training['epochs']):
 logging.info(f"\nTesting phase")
 
 model = load_pretrained_model(model, f'runs/{timestamp}/model_{timestamp}')
-results = inference(model=model, test_loader=test_loader, path=f"runs/{timestamp}", device=dev)
+results = inference_segmentation(model=model, test_loader=test_loader, path=f"runs/{timestamp}", device=dev)
 
 logging.info(results)
 

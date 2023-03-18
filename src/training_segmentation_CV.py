@@ -16,7 +16,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
 from src.utils.metrics import dice_score_from_tensor
 from src.utils.miscellany import init_log
 from src.utils.miscellany import seed_everything
-from src.utils.models import inference
+from src.utils.models import inference_segmentation
 from src.utils.models import init_loss_function
 from src.utils.models import init_optimizer
 from src.utils.models import init_segmentation_model
@@ -204,7 +204,7 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
 
     logging.info(f"\nTesting phase for fold {n}")
     model = load_pretrained_model(model, f'runs/{timestamp}/fold_{n}/model_{timestamp}_fold_{n}')
-    results = inference(model=model, test_loader=test_loader, path=f"runs/{timestamp}/fold_{n}/", device=dev)
+    results = inference_segmentation(model=model, test_loader=test_loader, path=f"runs/{timestamp}/fold_{n}/", device=dev)
 
     logging.info(results)
 
