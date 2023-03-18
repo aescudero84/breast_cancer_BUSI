@@ -5,11 +5,10 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-from torchvision import transforms
 import numpy as np
 
+
 def count_pixels(segmentation):
-    import numpy as np
     unique, counts = np.unique(segmentation, return_counts=True)
     pixels_dict = dict(zip(unique, counts))
 
@@ -55,12 +54,19 @@ class BUSI(Dataset):
             mask[mask == 255] = 1
 
             # loading other features
-            label = row['class']
             patient_id = row['id']
             dim1 = row['dim1']
             dim2 = row['dim2']
             tumor_pixels = row['tumor_pixels']
-
+            if row['class'] == 'malignant':
+                label = torch.ones(1)
+            elif row['class'] == 'benign':
+                label = torch.zeros(1)
+            elif row['class'] == 'normal':
+                label = 2 * torch.ones(1)
+            else:
+                raise Exception(f"\n\t-> Unknown class: {row['class']}")
+                
             # appending information in a list
             self.data.append({
                 'patient_id': patient_id,
