@@ -6,6 +6,8 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 import numpy as np
+import random
+from torchvision.transforms.functional import rotate, hflip, vflip
 
 
 def count_pixels(segmentation):
@@ -36,6 +38,7 @@ class BUSI(Dataset):
 
         self.mapping_file = mapping_file
         self.transforms = transforms
+        self.transforms_applied = {}
         self.augmentations = True if sum([v for k, v in augmentations.items()]) else False
         if augmentations:
             self.CLAHE = augmentations.get("CLAHE", False)
@@ -55,22 +58,24 @@ class BUSI(Dataset):
 
             # loading other features
             patient_id = row['id']
+            class_ = row['class']
             dim1 = row['dim1']
             dim2 = row['dim2']
             tumor_pixels = row['tumor_pixels']
-            if row['class'] == 'malignant':
+            if class_ == 'malignant':
                 label = torch.ones(1)
-            elif row['class'] == 'benign':
+            elif class_ == 'benign':
                 label = torch.zeros(1)
-            elif row['class'] == 'normal':
+            elif class_ == 'normal':
                 label = 2 * torch.ones(1)
             else:
                 raise Exception(f"\n\t-> Unknown class: {row['class']}")
-                
+
             # appending information in a list
             self.data.append({
                 'patient_id': patient_id,
                 'label': label,
+                'class_': class_,
                 'image': image,
                 'mask': mask,
                 'dim1': dim1,
@@ -121,6 +126,7 @@ class BUSI(Dataset):
         # apply transformations without augmentations
         if self.transforms is not None and not self.augmentations:
             joined = self.transforms(torch.cat([mask, image], dim=0))
+            # joined, self.transforms_applied = apply_transformations(torch.cat([mask, image], dim=0), self.transforms)
             mask = torch.unsqueeze(joined[0, :, :], 0)
             image = torch.unsqueeze(joined[1, :, :], 0)
 
@@ -128,6 +134,7 @@ class BUSI(Dataset):
         if self.transforms is not None and self.augmentations:
             joined = torch.cat([mask, image] + aumengs, dim=0)
             joined = self.transforms(joined)
+            # joined, self.transforms_applied = apply_transformations(joined, self.transforms)
             mask = torch.unsqueeze(joined[0, :, :], 0)
             image = joined[1:, :, :]
 
@@ -141,11 +148,13 @@ class BUSI(Dataset):
         return {
             'patient_id': patient_info['patient_id'],
             'label': patient_info['label'],
+            'class': patient_info['class_'],
             'image': image,
             'mask': mask,
             'dim1': patient_info['dim1'],
             'dim2': patient_info['dim2'],
-            'tumor_pixels': patient_info['tumor_pixels']
+            'tumor_pixels': patient_info['tumor_pixels'],
+            # 'transforms_applied': self.transforms_applied
         }
 
 # if '__main__' == __name__:
@@ -168,3 +177,68 @@ class BUSI(Dataset):
 #     plt.show()
 #     plt.imshow(patient['mask'][0, :, :], cmap='gray')
 #     plt.show()
+
+
+def apply_transformations(image, transforms):
+
+    # This will store the transformations applied
+    transforms_applied = {'horizontal_flip': False, 'vertical_flip': False, 'rotation': 0}
+
+    # plt.imshow(image[0, 0, :, :], cmap='gray')
+    # plt.show()
+    #
+    # Random horizontal flips
+    if random.random() < transforms.get('horizontal_flip') != .0:
+        transforms_applied['horizontal_flip'] = True
+        image = hflip(image)
+        # plt.imshow(image[0, 0, :, :], cmap='gray')
+        # plt.show()
+    # Random vertical flips
+    if random.random() < transforms.get('vertical_flip') != .0:
+        transforms_applied['vertical_flip'] = True
+        image = vflip(image)
+        # plt.imshow(image[0, 0, :, :], cmap='gray')
+        # plt.show()
+    # Random rotations between 0-360 degrees
+    if random.random() < transforms.get('rotation'):
+        # angle = random.randint(0, 360)
+        angle = int(np.random.choice(range(0, 360)))
+        transforms_applied['rotation'] = angle
+        image = rotate(image, angle)
+        # image = rotate(image, angle, fill=0)
+        # plt.imshow(image[0, 0, :, :], cmap='gray')
+        # plt.show()
+
+    return image, transforms_applied
+
+
+if __name__ == '__main__':
+    import torchvision
+    transforms_sequencial = torch.nn.Sequential(
+        # transforms.RandomCrop(128, pad_if_needed=True),
+        torchvision.transforms.RandomHorizontalFlip(p=1),
+        torchvision.transforms.RandomVerticalFlip(p=1),
+        # transforms.RandomRotation(degrees=random.choice([30, 60, 90, 120]))
+        # torchvision.transforms.RandomRotation(degrees=np.random.choice(range(0, 360))),
+        # transforms.GaussianBlur(kernel_size=(5, 5), sigma=(1.5, 1.5))
+
+    )
+
+
+    img = cv2.imread("./../../Datasets/Dataset_BUSI_with_GT_postprocessed_128/images/malignant_id_30.png", 0)
+    img = torch.unsqueeze(torch.unsqueeze(torch.as_tensor(img, dtype=torch.float32), 0), 0)
+    plt.imshow(img[0, 0, :, :], cmap='gray')
+    plt.show()
+
+    img_1 = transforms_sequencial(img)
+    plt.imshow(img_1[0, 0, :, :], cmap='gray')
+    plt.show()
+
+    transforms = {'horizontal_flip': 1, 'vertical_flip': 1, 'rotation': 0}
+    img_2, transforms_applied = apply_transformations(img, transforms)
+    plt.imshow(img_2[0, 0, :, :], cmap='gray')
+    plt.show()
+
+    print(img_1 == img_2)
+
+    print(transforms_applied)
