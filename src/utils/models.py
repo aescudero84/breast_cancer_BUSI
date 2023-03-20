@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 from src.utils.metrics import calculate_metrics
 from pathlib import Path
 from src.models.segmentation.BTS_UNet import BTSUNet
-from src.models.segmentation.Test_UNet import TestUNet
+from src.models.classification.BTS_UNET_classifier import BTSUNetClassifier
 from src.models.segmentation.FSB_BTS_UNet import FSB_BTS_UNet
 from monai.networks.nets import UNet, VNet, SegResNet
 from monai.losses import DiceLoss, DiceFocalLoss, GeneralizedDiceLoss, DiceCELoss
@@ -31,7 +31,7 @@ def load_pretrained_model(model: nn.Module, ckpt_path: str):
     return model
 
 
-def inference(model: torch.nn.Module, test_loader: torch.utils.data.DataLoader, path: str, device: str = 'cpu'):
+def inference_segmentation(model: torch.nn.Module, test_loader: torch.utils.data.DataLoader, path: str, device: str = 'cpu'):
     results = pd.DataFrame(columns=['patient_id', 'Haussdorf distance', 'DICE', 'Sensitivity', 'Specificity',
                                     'Accuracy', 'Jaccard index', 'Precision', 'class'])
 
@@ -76,6 +76,39 @@ def inference(model: torch.nn.Module, test_loader: torch.utils.data.DataLoader, 
     results.to_csv(f'{path}/results.csv', index=False)
 
     return results
+
+
+def inference_classification(model: torch.nn.Module, test_loader: torch.utils.data.DataLoader, path: str, device: str = 'cpu'):
+    metrics = pd.DataFrame(columns=['patient_id', 'ground_truth', 'predicted_label'])
+
+    patients = []
+    ground_truth_label = []
+    predicted_label = []
+    for i, test_data in enumerate(test_loader):
+
+        # load information from patient
+        patient_id = test_data['patient_id'].item()
+        label = test_data['label'][0]
+        test_images = test_data['image'].to(device)
+
+        # generating segmentation
+        test_outputs = model(test_images)
+        test_outputs = (torch.sigmoid(test_outputs) > .5).double()
+
+        # converting tensors to numpy arrays
+        patients.append(patient_id)
+        # print(label.detach().cpu().numpy()[0])
+        # print(test_outputs.detach().cpu().numpy()[0][0])
+        ground_truth_label.append(label.detach().cpu().numpy()[0])
+        predicted_label.append(test_outputs.detach().cpu().numpy()[0][0])
+
+        # getting metrics
+    metrics = pd.DataFrame({'patient_id': patients, 'ground_truth': ground_truth_label, 'predicted_label': predicted_label})
+
+    metrics.to_csv(f'{path}/results.csv', index=False)
+
+    return metrics
+
 
 
 def save_segmentation(seg: np.array, path: str):
@@ -177,6 +210,8 @@ def init_loss_function(loss_function: str = "dice") -> torch.nn.Module:
         loss_function_criterion = DiceCELoss(include_background=True, sigmoid=True, squared_pred=True)
     elif loss_function == "Jaccard":
         loss_function_criterion = DiceLoss(include_background=True, sigmoid=True, jaccard=True, reduction="sum")
+    elif loss_function == "BCE":
+        loss_function_criterion = torch.nn.BCEWithLogitsLoss()
     else:
         print("Select a loss function allowed: ['DICE', 'FocalDICE', 'GeneralizedDICE', 'CrossentropyDICE', 'Jaccard']")
         sys.exit()
@@ -194,3 +229,46 @@ def init_lr_scheduler(optimizer, scheduler: str = "dice", T_max=20, min_lr=1e-6,
         sys.exit()
 
     return sche
+
+
+def init_classification_model(
+        architecture: str,
+        sequences: int = 1,
+        classes: int = 1,
+        width: int = 48,
+        save_folder: Path = None,
+        deep_supervision: bool = False
+) -> torch.nn.Module:
+    """
+    This function implement the architecture chosen.
+
+    Params:
+    *******
+        - architecture: architecture chosen
+
+    Return:
+    *******
+        - et_present: it is true if the segmentation possess the ET region
+        - img_segmentation: stack of images of the regions
+    """
+
+    logging.info(f"Creating {architecture} model")
+    logging.info(f"The model will be fed with {sequences} sequences")
+
+    if architecture == 'BTSUNetClassifier':
+        model = BTSUNetClassifier(sequences=sequences, classes=classes, width=width, deep_supervision=deep_supervision)
+    else:
+        model = torch.nn.Module()
+        assert "The model selected does not exist. " \
+               "Please, chose some of the following architectures: 3DUNet, VNet, ResidualUNet, ShallowUNet, DeepUNet"
+
+    # Saving the model scheme in a .txt file
+    if save_folder is not None:
+        model_file = save_folder / "model.txt"
+        with model_file.open("w") as f:
+            print(model, file=f)
+
+    logging.info(model)
+    logging.info(f"Total number of trainable parameters: {count_parameters(model)}")
+
+    return model
