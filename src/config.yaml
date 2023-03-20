@@ -24,9 +24,14 @@ data:
   batch_size: 1
   train_size: 0.8
   classes: [benign, malignant]
+  remove_outliers: True
   augmentation:
     CLAHE: False
     brightness_brighter: False
     brightness_darker: False
     contrast_high: False
     contrast_low: False
+  transforms:
+    horizontal_flip: .5
+    vertical_flip: .5
+    rotation: 1.0

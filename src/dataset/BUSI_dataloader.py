@@ -14,8 +14,8 @@ from torchvision import transforms
 from src.dataset.BUSI_dataset import BUSI
 
 
-def BUSI_dataloader(seed, batch_size, transforms, augmentations=None, normalization=None, train_size=0.8,
-                    classes=None, path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/"):
+def BUSI_dataloader(seed, batch_size, transforms, remove_outliers=False, augmentations=None, normalization=None,
+                    train_size=0.8, classes=None, path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/"):
 
     # classes to use by default
     if classes is None:
@@ -28,6 +28,8 @@ def BUSI_dataloader(seed, batch_size, transforms, augmentations=None, normalizat
 
     # loading mapping file
     mapping = pd.read_csv(f"{path_images}/mapping.csv")
+    if remove_outliers:
+        mapping = filter_anomalous_cases(mapping)
 
     # filtering specific classes
     mapping = mapping[mapping['class'].isin(classes)]
@@ -61,8 +63,9 @@ def BUSI_dataloader(seed, batch_size, transforms, augmentations=None, normalizat
     return train_loader, val_loader, test_loader
 
 
-def BUSI_dataloader_CV(seed, batch_size, transforms, augmentations=None, normalization=None, train_size=0.8,
-                       classes=None, n_folds=5, path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/"):
+def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augmentations=None, normalization=None,
+                       train_size=0.8, classes=None, n_folds=5,
+                       path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/"):
 
     # classes to use by default
     if classes is None:
@@ -75,6 +78,8 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, augmentations=None, normali
 
     # loading mapping file
     mapping = pd.read_csv(f"{path_images}/mapping.csv")
+    if remove_outliers:
+        mapping = filter_anomalous_cases(mapping)
 
     # filtering specific classes
     mapping = mapping[mapping['class'].isin(classes)]
@@ -107,13 +112,25 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, augmentations=None, normali
     return train_loader, val_loader, test_loader
 
 
+def filter_anomalous_cases(mapping):
+
+    anomalous_cases = {
+        'benign': [435, 433, 42, 131, 437, 269, 333, 399, 403, 406, 85, 164, 61, 94, 108, 114, 116, 119, 122, 201, 302,
+                   394, 402, 199, 248, 242, 288, 236, 247, 233, 299, 4, 321, 25, 153],
+        'malignant': [145, 51, 77, 78, 93, 94, 52, 106, 107, 18, 116],
+        'normal': [34, 1]
+    }
+
+    for cls, ids in anomalous_cases.items():
+        mapping = mapping[~((mapping['class'] == cls) & (mapping['id'].isin(ids)))]
+
+    return mapping
+
+
 if __name__ == '__main__':
     from time import perf_counter
     tic = perf_counter()
-    # transforms = torch.nn.Sequential(
-    #     # transforms.RandomCrop(500, pad_if_needed=True),
-    #     transforms.Resize((256, 256)),
-    # )
+
 
     # a, b, c = BUSI_dataloader(seed=1, batch_size=1, transforms=None)
     a, b, c = BUSI_dataloader_CV(seed=1, batch_size=1, transforms=None)
