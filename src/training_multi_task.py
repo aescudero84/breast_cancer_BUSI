@@ -9,23 +9,28 @@ import numpy as np
 import torch
 import yaml
 from torchvision import transforms
-from torch.cuda.amp import autocast, GradScaler
-from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
-from src.dataset.BUSI_dataloader import BUSI_dataloader
 from src.utils.metrics import accuracy_from_tensor, f1_score_from_tensor
+from src.dataset.BUSI_dataloader import BUSI_dataloader
+from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
+from src.utils.metrics import dice_score_from_tensor
 from src.utils.miscellany import init_log
 from src.utils.miscellany import seed_everything
-from src.utils.models import inference_classification
+from src.utils.models import inference_multitask
 from src.utils.models import init_loss_function
 from src.utils.models import init_optimizer
-from src.utils.models import init_classification_model
+from src.utils.models import init_multitask_model
 from src.utils.models import load_pretrained_model
 from src.utils.metrics import precision, sentitivity, specificity, accuracy, f1_score
 from sklearn.metrics import confusion_matrix
 
 
+loss_function_BCE = torch.nn.BCEWithLogitsLoss()
+alpha = .8
+
+
 def train_one_epoch():
     running_training_loss = 0.
+    running_dice = 0.
     ground_truth_label = []
     predicted_label = []
 
@@ -36,81 +41,102 @@ def train_one_epoch():
         # Zero your gradients for every batch!
         optimizer.zero_grad(set_to_none=True)
 
-        # enable auto-casting
-        # with autocast(enabled=False):
         # Make predictions for this batch
-        outputs = model(inputs)
+        pred_class, outputs = model(inputs)
 
         # Compute the loss and its gradients
         if type(outputs) == list:
             # if deep supervision
             loss = torch.sum(torch.stack([loss_fn(o, masks) / (n + 1) for n, o in enumerate(reversed(outputs))]))
         else:
-            loss = loss_fn(outputs, label)
+            loss = loss_fn(outputs, masks)
+
+        loss_BCE = loss_function_BCE(pred_class, label)
+        loss = alpha * loss + (1-alpha) * loss_BCE
+
         if not torch.isnan(loss):
             running_training_loss += loss.item()
         else:
             logging.info("NaN in model loss!!")
 
         # Performing backward step through scaler methodology
-        # scaler.scale(loss).backward()
-        # scaler.step(optimizer)
-        # scaler.update()
         loss.backward()
         optimizer.step()
 
         # measuring DICE
         if type(outputs) == list:
             outputs = outputs[-1]
+        outputs = torch.sigmoid(outputs) > .5
+        dice = dice_score_from_tensor(masks, outputs)
+        running_dice += dice
 
         # adding ground truth label and predicted label
-        if outputs.shape[0] > 1:  # when batch size > 1, each element is added individually
-            for i in range(outputs.shape[0]):
-                predicted_label.append((torch.sigmoid(outputs[i, :]) > .5).double())
+        if pred_class.shape[0] > 1:  # when batch size > 1, each element is added individually
+            for i in range(pred_class.shape[0]):
+                predicted_label.append((torch.sigmoid(pred_class[i, :]) > .5).double())
                 ground_truth_label.append(label[i, :])
         else:
-            predicted_label.append((torch.sigmoid(outputs) > .5).double())
+            predicted_label.append((torch.sigmoid(pred_class) > .5).double())
             ground_truth_label.append(label)
 
         del loss
-        del outputs
+        del pred_class, outputs
 
     running_acc = accuracy_from_tensor(torch.Tensor(ground_truth_label), torch.Tensor(predicted_label))
     running_f1_score = f1_score_from_tensor(torch.Tensor(ground_truth_label), torch.Tensor(predicted_label))
 
-    return running_training_loss / training_loader.__len__(), running_acc, running_f1_score
+    return running_training_loss / training_loader.__len__(), running_dice / training_loader.__len__(), running_acc, running_f1_score
 
 
+@torch.no_grad()
 def validate_one_epoch():
-    running_validation_loss = 0.
+    running_validation_loss = 0.0
+    running_validation_dice = 0.0
     val_ground_truth_label = []
     val_predicted_label = []
+
     for i, validation_data in enumerate(validation_loader):
 
         validation_images, validation_masks = validation_data['image'].to(dev), validation_data['mask'].to(dev)
         validation_label = validation_data['label'].to(dev)
 
-        validation_outputs = model(validation_images)
+        pred_val_class, validation_outputs = model(validation_images)
         if type(validation_outputs) == list:
             validation_loss = torch.sum(torch.stack(
                 [loss_fn(vo, validation_masks) / (n + 1) for n, vo in enumerate(reversed(validation_outputs))]))
         else:
-            validation_loss = loss_fn(validation_outputs, validation_label)
+            validation_loss = loss_fn(validation_outputs, validation_masks)
+
+        loss_BCE = loss_function_BCE(pred_val_class, validation_label)
+        validation_loss = alpha * validation_loss + (1-alpha) * loss_BCE
+
         running_validation_loss += validation_loss
 
         # measuring DICE
         if type(validation_outputs) == list:
             validation_outputs = validation_outputs[-1]
+        validation_outputs = torch.sigmoid(validation_outputs) > .5
+        dice = dice_score_from_tensor(validation_masks, validation_outputs)
+        running_validation_dice += dice
 
         # adding ground truth label and predicted label
-        val_predicted_label.append((torch.sigmoid(validation_outputs) > .5).double())
-        val_ground_truth_label.append(validation_label)
+        if pred_val_class.shape[0] > 1:  # when batch size > 1, each element is added individually
+            for i in range(pred_val_class.shape[0]):
+                val_predicted_label.append((torch.sigmoid(pred_val_class[i, :]) > .5).double())
+                val_ground_truth_label.append(validation_label[i, :])
+        else:
+            val_predicted_label.append((torch.sigmoid(pred_val_class) > .5).double())
+            val_ground_truth_label.append(validation_label)
 
-    avg_val_loss = running_validation_loss / validation_loader.__len__()
+        del validation_loss
+        del pred_val_class, validation_outputs
+
+    avg_validation_loss = running_validation_loss / validation_loader.__len__()
+    avg_validation_dice = running_validation_dice / validation_loader.__len__()
     running_acc = accuracy_from_tensor(torch.Tensor(val_ground_truth_label), torch.Tensor(val_predicted_label))
     running_f1_score = f1_score_from_tensor(torch.Tensor(val_ground_truth_label), torch.Tensor(val_predicted_label))
 
-    return avg_val_loss, running_acc, running_f1_score
+    return avg_validation_loss, avg_validation_dice, running_acc, running_f1_score
 
 
 # start time
@@ -118,6 +144,7 @@ init_time = time.perf_counter()
 # initializing folder structures and log
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 Path(f"runs/{timestamp}/segs/").mkdir(parents=True, exist_ok=True)
+Path(f"runs/{timestamp}/features_map/").mkdir(parents=True, exist_ok=True)
 init_log(log_name=f"./runs/{timestamp}/execution.log")
 
 # loading config file
@@ -143,30 +170,28 @@ else:
 
 # initializing experiment's objects
 n_augments = sum([v for k, v in config_data['augmentation'].items()])
-model = init_classification_model(architecture=config_model['architecture'],
-                                  classes=len(config_data['classes']),
-                                  width=config_model['width'],
-                                  deep_supervision=config_model['deep_supervision'],
-                                  save_folder=Path(f'./runs/{timestamp}/')).to(dev)
+model = init_multitask_model(architecture=config_model['architecture'],
+                             sequences=config_model['sequences'] + n_augments,
+                             width=config_model['width'],
+                             deep_supervision=config_model['deep_supervision'],
+                             save_folder=Path(f'./runs/{timestamp}/')).to(dev)
 optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
 loss_fn = init_loss_function(loss_function=config_loss['function'])
 # scaler = GradScaler()  # create a GradScaler object for scaling the gradients
-scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-7, verbose=True)
-# scheduler = CosineAnnealingLR(optimizer, T_max=50, eta_min=1e-6)
+# scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, min_lr=1e-6, verbose=True)
+scheduler = CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-6)
 
 transforms = torch.nn.Sequential(
     # transforms.RandomCrop(128, pad_if_needed=True),
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.RandomVerticalFlip(p=0.5),
-    # transforms.RandomRotation(degrees=random.choice([30, 60, 90, 120]))
-    transforms.RandomRotation(degrees=np.random.choice(range(0, 360))),
-    # transforms.GaussianBlur(kernel_size=(5, 5), sigma=(1.5, 1.5))
-
+    transforms.RandomRotation(degrees=np.random.choice(range(0, 360)))
 )
 
 training_loader, validation_loader, test_loader = BUSI_dataloader(seed=config_training['seed'],
                                                                   batch_size=config_data['batch_size'],
                                                                   transforms=transforms,
+                                                                  remove_outliers=config_data['remove_outliers'],
                                                                   train_size=config_data['train_size'],
                                                                   augmentations=config_data['augmentation'],
                                                                   normalization=None,
@@ -181,12 +206,11 @@ for epoch in range(config_training['epochs']):
 
     # Make sure gradient tracking is on, and do a pass over the data
     model.train(True)
-    avg_train_loss, train_acc, train_f1_score = train_one_epoch()
+    avg_train_loss, avg_dice, train_acc, train_f1_score = train_one_epoch()
 
     # We don't need gradients on to do reporting
     model.train(False)
-    with torch.no_grad():
-        avg_validation_loss, val_acc, val_f1_score = validate_one_epoch()
+    avg_validation_loss, avg_validation_dice, val_acc, val_f1_score = validate_one_epoch()
 
     # # Update the learning rate at the end of each epoch
     scheduler.step(avg_validation_loss)
@@ -210,6 +234,8 @@ for epoch in range(config_training['epochs']):
     logging.info(f'EPOCH {epoch} --> '
                  f'|| Training loss {avg_train_loss:.4f} '
                  f'|| Validation loss {avg_validation_loss:.4f} '
+                 f'|| Training DICE {avg_dice:.4f} '
+                 f'|| Validation DICE  {avg_validation_dice:.4f} '
                  f'|| Training ACC {train_acc:.4f} '
                  f'|| Training F1 {train_f1_score:.4f} '
                  f'|| Validation ACC {val_acc:.4f} '
@@ -225,12 +251,20 @@ for epoch in range(config_training['epochs']):
 logging.info(f"\nTesting phase")
 
 model = load_pretrained_model(model, f'runs/{timestamp}/model_{timestamp}')
-results = inference_classification(model=model, test_loader=test_loader, path=f"runs/{timestamp}", device=dev)
+results, metrics = inference_multitask(model=model, test_loader=test_loader, path=f"runs/{timestamp}", device=dev)
 
 logging.info(results)
 
+logging.info(results.mean())
+logging.info(results.median())
+logging.info(results.max())
+
+
+
+logging.info(metrics)
+
 # metrics
-cm = confusion_matrix(y_true=results.ground_truth, y_pred=results.predicted_label).ravel()
+cm = confusion_matrix(y_true=metrics.ground_truth, y_pred=metrics.predicted_label).ravel()
 logging.info(cm)
 tn, fp, fn, tp = cm.ravel()
 

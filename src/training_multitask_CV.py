@@ -9,33 +9,44 @@ import sys
 import numpy as np
 import torch
 import yaml
-from torchvision import transforms
-
-from src.dataset.BUSI_dataloader import BUSI_dataloader, BUSI_dataloader_CV
+from torchvision.transforms import RandomRotation, RandomHorizontalFlip, RandomVerticalFlip
+from src.utils.metrics import accuracy_from_tensor, f1_score_from_tensor
+from src.dataset.BUSI_dataloader import BUSI_dataloader_CV
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
 from src.utils.metrics import dice_score_from_tensor
 from src.utils.miscellany import init_log
 from src.utils.miscellany import seed_everything
-from src.utils.models import inference_segmentation
+from src.utils.models import inference_multitask
 from src.utils.models import init_loss_function
 from src.utils.models import init_optimizer
-from src.utils.models import init_segmentation_model
+from src.utils.models import init_multitask_model
 from src.utils.models import load_pretrained_model
+from src.utils.metrics import precision, sentitivity, specificity, accuracy, f1_score
+from sklearn.metrics import confusion_matrix
 
+
+loss_function_BCE = torch.nn.BCEWithLogitsLoss()
+alpha = 1
+# alphas = [.85, .75]
+
+# for alpha in alphas:
+#     print(f"\n\n $$$$$$$$$$$$$$$$$$$$$$$ {alpha} $$$$$$$$$$$$$$$$$$$$$$$ \n\n")
 
 def train_one_epoch():
     running_training_loss = 0.
     running_dice = 0.
+    ground_truth_label = []
+    predicted_label = []
 
     # Iterating over training loader
     for k, data in enumerate(training_loader):
-        inputs, masks = data['image'].to(dev), data['mask'].to(dev)
+        inputs, masks, label = data['image'].to(dev), data['mask'].to(dev), data['label'].to(dev)
 
         # Zero your gradients for every batch!
         optimizer.zero_grad(set_to_none=True)
 
         # Make predictions for this batch
-        outputs = model(inputs)
+        pred_class, outputs = model(inputs)
 
         # Compute the loss and its gradients
         if type(outputs) == list:
@@ -43,6 +54,10 @@ def train_one_epoch():
             loss = torch.sum(torch.stack([loss_fn(o, masks) / (n + 1) for n, o in enumerate(reversed(outputs))]))
         else:
             loss = loss_fn(outputs, masks)
+
+        loss_BCE = loss_function_BCE(pred_class, label)
+        loss = alpha * loss + (1-alpha) * loss_BCE
+
         if not torch.isnan(loss):
             running_training_loss += loss.item()
         else:
@@ -59,24 +74,46 @@ def train_one_epoch():
         dice = dice_score_from_tensor(masks, outputs)
         running_dice += dice
 
+        # adding ground truth label and predicted label
+        if pred_class.shape[0] > 1:  # when batch size > 1, each element is added individually
+            for i in range(pred_class.shape[0]):
+                predicted_label.append((torch.sigmoid(pred_class[i, :]) > .5).double())
+                ground_truth_label.append(label[i, :])
+        else:
+            predicted_label.append((torch.sigmoid(pred_class) > .5).double())
+            ground_truth_label.append(label)
+
         del loss
-        del outputs
+        del pred_class, outputs
 
-    return running_training_loss / training_loader.__len__(), running_dice / training_loader.__len__()
+    running_acc = accuracy_from_tensor(torch.Tensor(ground_truth_label), torch.Tensor(predicted_label))
+    running_f1_score = f1_score_from_tensor(torch.Tensor(ground_truth_label), torch.Tensor(predicted_label))
+
+    return running_training_loss / training_loader.__len__(), running_dice / training_loader.__len__(), running_acc, running_f1_score
 
 
+@torch.no_grad()
 def validate_one_epoch():
     running_validation_loss = 0.0
     running_validation_dice = 0.0
+    val_ground_truth_label = []
+    val_predicted_label = []
+
     for i, validation_data in enumerate(validation_loader):
 
         validation_images, validation_masks = validation_data['image'].to(dev), validation_data['mask'].to(dev)
-        validation_outputs = model(validation_images)
+        validation_label = validation_data['label'].to(dev)
+
+        pred_val_class, validation_outputs = model(validation_images)
         if type(validation_outputs) == list:
             validation_loss = torch.sum(torch.stack(
                 [loss_fn(vo, validation_masks) / (n + 1) for n, vo in enumerate(reversed(validation_outputs))]))
         else:
             validation_loss = loss_fn(validation_outputs, validation_masks)
+
+        loss_BCE = loss_function_BCE(pred_val_class, validation_label)
+        validation_loss = alpha * validation_loss + (1-alpha) * loss_BCE
+
         running_validation_loss += validation_loss
 
         # measuring DICE
@@ -86,12 +123,28 @@ def validate_one_epoch():
         dice = dice_score_from_tensor(validation_masks, validation_outputs)
         running_validation_dice += dice
 
+        # adding ground truth label and predicted label
+        if pred_val_class.shape[0] > 1:  # when batch size > 1, each element is added individually
+            for i in range(pred_val_class.shape[0]):
+                val_predicted_label.append((torch.sigmoid(pred_val_class[i, :]) > .5).double())
+                val_ground_truth_label.append(validation_label[i, :])
+        else:
+            val_predicted_label.append((torch.sigmoid(pred_val_class) > .5).double())
+            val_ground_truth_label.append(validation_label)
+
+        del validation_loss
+        del pred_val_class, validation_outputs
+
     avg_validation_loss = running_validation_loss / validation_loader.__len__()
     avg_validation_dice = running_validation_dice / validation_loader.__len__()
+    running_acc = accuracy_from_tensor(torch.Tensor(val_ground_truth_label), torch.Tensor(val_predicted_label))
+    running_f1_score = f1_score_from_tensor(torch.Tensor(val_ground_truth_label), torch.Tensor(val_predicted_label))
 
-    return avg_validation_loss, avg_validation_dice
+    return avg_validation_loss, avg_validation_dice, running_acc, running_f1_score
 
 
+# start time
+init_time = time.perf_counter()
 # initializing folder structures and log
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 Path(f"runs/{timestamp}/").mkdir(parents=True, exist_ok=True)
@@ -117,15 +170,14 @@ else:
     dev = "cpu"
     logging.info("CPU will be used to train the model")
 
-
+# initializing experiment's objects
 n_augments = sum([v for k, v in config_data['augmentation'].items()])
+
 transforms = torch.nn.Sequential(
     # transforms.RandomCrop(128, pad_if_needed=True),
-    transforms.RandomHorizontalFlip(p=0.5),
-    transforms.RandomVerticalFlip(p=0.5),
-    # transforms.RandomRotation(degrees=random.choice([30, 60, 90, 120]))
-    transforms.RandomRotation(degrees=np.random.choice(range(0, 360))),
-    # transforms.RandomCrop(64)
+    RandomHorizontalFlip(p=0.5),
+    RandomVerticalFlip(p=0.5),
+    RandomRotation(degrees=np.random.choice(range(0, 360)))
 )
 
 if config_training['CV'] > 1:
@@ -148,11 +200,14 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
     # creating specific paths and experiment's objects for each fold
     init_time = time.perf_counter()
     Path(f"runs/{timestamp}/fold_{n}/segs/").mkdir(parents=True, exist_ok=True)
+    Path(f"runs/{timestamp}/fold_{n}/features_map/").mkdir(parents=True, exist_ok=True)
+
     init_log(log_name=f"./runs/{timestamp}/fold_{n}/execution_fold_{n}.log")
-    model = init_segmentation_model(architecture=config_model['architecture'],
-                                    sequences=config_model['sequences'] + n_augments,
-                                    width=config_model['width'], deep_supervision=config_model['deep_supervision'],
-                                    save_folder=Path(f'./runs/{timestamp}/')).to(dev)
+    model = init_multitask_model(architecture=config_model['architecture'],
+                                 sequences=config_model['sequences'] + n_augments,
+                                 width=config_model['width'],
+                                 deep_supervision=config_model['deep_supervision'],
+                                 save_folder=Path(f'./runs/{timestamp}/')).to(dev)
     optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
     loss_fn = init_loss_function(loss_function=config_loss['function'])
     scheduler = CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-6)
@@ -165,12 +220,11 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
 
         # Make sure gradient tracking is on, and do a pass over the data
         model.train(True)
-        avg_train_loss, avg_dice = train_one_epoch()
+        avg_train_loss, avg_dice, train_acc, train_f1_score = train_one_epoch()
 
         # We don't need gradients on to do reporting
         model.train(False)
-        with torch.no_grad():
-            avg_validation_loss, avg_validation_dice = validate_one_epoch()
+        avg_validation_loss, avg_validation_dice, val_acc, val_f1_score = validate_one_epoch()
 
         # # Update the learning rate at the end of each epoch
         scheduler.step(avg_validation_loss)
@@ -196,6 +250,10 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
                      f'|| Validation loss {avg_validation_loss:.4f} '
                      f'|| Training DICE {avg_dice:.4f} '
                      f'|| Validation DICE  {avg_validation_dice:.4f} '
+                     f'|| Training ACC {train_acc:.4f} '
+                     f'|| Training F1 {train_f1_score:.4f} '
+                     f'|| Validation ACC {val_acc:.4f} '
+                     f'|| Validation F1 {val_f1_score:.4f} '
                      f'|| Patience: {patience} '
                      f'|| Epoch time: {end_epoch_time - start_epoch_time:.4f}')
 
@@ -206,13 +264,25 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
 
     logging.info(f"\nTesting phase for fold {n}")
     model = load_pretrained_model(model, f'runs/{timestamp}/fold_{n}/model_{timestamp}_fold_{n}')
-    results = inference_segmentation(model=model, test_loader=test_loader, path=f"runs/{timestamp}/fold_{n}/", device=dev)
+    results, metrics = inference_multitask(model=model, test_loader=test_loader, path=f"runs/{timestamp}/fold_{n}/",
+                                           device=dev)
 
     logging.info(results)
 
     logging.info(results.mean())
     logging.info(results.median())
     logging.info(results.max())
+
+    # metrics
+    cm = confusion_matrix(y_true=metrics.ground_truth, y_pred=metrics.predicted_label).ravel()
+    logging.info(cm)
+    tn, fp, fn, tp = cm.ravel()
+
+    logging.info(f"Precision: {precision(tp, fp)}")
+    logging.info(f"Sensitivity: {sentitivity(tp, fn)}")
+    logging.info(f"Specificity: {specificity(tn, fp)}")
+    logging.info(f"Accuracy: {accuracy(tp, tn, fp, fn)}")
+    logging.info(f"F1 score: {f1_score(tp, fp, fn)}")
 
     end_time = time.perf_counter()
     logging.info(f"Total time for fold {n}: {end_time - init_time:.2f}")

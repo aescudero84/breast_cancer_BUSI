@@ -69,6 +69,7 @@ def train_one_epoch():
     return running_training_loss / training_loader.__len__(), running_dice / training_loader.__len__()
 
 
+@torch.no_grad()
 def validate_one_epoch():
     running_validation_loss = 0.0
     running_validation_dice = 0.0
@@ -101,6 +102,7 @@ init_time = time.perf_counter()
 # initializing folder structures and log
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 Path(f"runs/{timestamp}/segs/").mkdir(parents=True, exist_ok=True)
+Path(f"runs/{timestamp}/features_map/").mkdir(parents=True, exist_ok=True)
 init_log(log_name=f"./runs/{timestamp}/execution.log")
 
 # loading config file
@@ -149,12 +151,15 @@ transforms = torch.nn.Sequential(
 
 training_loader, validation_loader, test_loader = BUSI_dataloader(seed=config_training['seed'],
                                                                   batch_size=config_data['batch_size'],
+                                                                  # transforms=config_data['transforms'],
                                                                   transforms=transforms,
+                                                                  remove_outliers=config_data['remove_outliers'],
                                                                   train_size=config_data['train_size'],
                                                                   augmentations=config_data['augmentation'],
                                                                   normalization=None,
                                                                   classes=config_data['classes'],
-                                                                  path_images=config_data['input_img'])
+                                                                  path_images=config_data['input_img'],
+                                                                  oversampling=config_data['oversampling'])
 
 best_validation_loss = 1_000_000.
 patience = 0
@@ -167,8 +172,7 @@ for epoch in range(config_training['epochs']):
 
     # We don't need gradients on to do reporting
     model.train(False)
-    with torch.no_grad():
-        avg_validation_loss, avg_validation_dice = validate_one_epoch()
+    avg_validation_loss, avg_validation_dice = validate_one_epoch()
 
     # # Update the learning rate at the end of each epoch
     scheduler.step(avg_validation_loss)
