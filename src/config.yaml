@@ -1,5 +1,5 @@
 model: # model hyper-parameters
-  architecture: FSB_BTS_UNet
+  architecture: Multi_FSB_BTS_UNet
   sequences: 1
   width: 24
   deep_supervision: True
@@ -23,8 +23,9 @@ data:
   input_img: Datasets/Dataset_BUSI_with_GT_postprocessed_128
   batch_size: 1
   train_size: 0.8
-  classes: [benign, malignant]
-  remove_outliers: True
+  classes: [malignant]
+  remove_outliers: False
+  oversampling: False
   augmentation:
     CLAHE: False
     brightness_brighter: False

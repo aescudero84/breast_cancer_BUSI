@@ -15,7 +15,8 @@ from src.dataset.BUSI_dataset import BUSI
 
 
 def BUSI_dataloader(seed, batch_size, transforms, remove_outliers=False, augmentations=None, normalization=None,
-                    train_size=0.8, classes=None, path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/"):
+                    train_size=0.8, classes=None, path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/",
+                    oversampling=True):
 
     # classes to use by default
     if classes is None:
@@ -28,8 +29,6 @@ def BUSI_dataloader(seed, batch_size, transforms, remove_outliers=False, augment
 
     # loading mapping file
     mapping = pd.read_csv(f"{path_images}/mapping.csv")
-    if remove_outliers:
-        mapping = filter_anomalous_cases(mapping)
 
     # filtering specific classes
     mapping = mapping[mapping['class'].isin(classes)]
@@ -40,9 +39,20 @@ def BUSI_dataloader(seed, batch_size, transforms, remove_outliers=False, augment
     val_mapping, test_mapping = train_test_split(val_mapping_, test_size=0.5, random_state=int(seed), shuffle=True,
                                                  stratify=val_mapping_['class'])
 
+    if remove_outliers:
+        train_mapping = filter_anomalous_cases(train_mapping)
+        val_mapping = filter_anomalous_cases(val_mapping)
+        test_mapping = filter_anomalous_cases(test_mapping)
+
+    if oversampling:
+        train_mapping_malignant = train_mapping[train_mapping['class'] == 'malignant']
+        train_mapping = pd.concat([train_mapping, train_mapping_malignant])
+
+    # logging datasets
     logging.info(train_mapping)
     logging.info(val_mapping)
     logging.info(test_mapping)
+
     # Creating the train-validation-test datasets
     train_dataset = BUSI(mapping_file=train_mapping, transforms=transforms, augmentations=augmentations, normalization=normalization)
     val_dataset = BUSI(mapping_file=val_mapping, transforms=None, augmentations=augmentations, normalization=normalization)
@@ -64,7 +74,7 @@ def BUSI_dataloader(seed, batch_size, transforms, remove_outliers=False, augment
 
 
 def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augmentations=None, normalization=None,
-                       train_size=0.8, classes=None, n_folds=5,
+                       train_size=0.8, classes=None, n_folds=5, oversampling=True,
                        path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/"):
 
     # classes to use by default
@@ -78,8 +88,6 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augm
 
     # loading mapping file
     mapping = pd.read_csv(f"{path_images}/mapping.csv")
-    if remove_outliers:
-        mapping = filter_anomalous_cases(mapping)
 
     # filtering specific classes
     mapping = mapping[mapping['class'].isin(classes)]
@@ -94,6 +102,15 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augm
         # Splitting the mapping dataset into train_mapping, val_mapping and test_mapping
         train_mapping, val_mapping = train_test_split(train_val_mapping, train_size=train_size, random_state=int(seed),
                                                       shuffle=True, stratify=train_val_mapping['class'])
+
+        if remove_outliers:
+            train_mapping = filter_anomalous_cases(train_mapping)
+            val_mapping = filter_anomalous_cases(val_mapping)
+            test_mapping = filter_anomalous_cases(test_mapping)
+
+        if oversampling:
+            train_mapping_malignant = train_mapping[train_mapping['class'] == 'malignant']
+            train_mapping = pd.concat([train_mapping, train_mapping_malignant])
 
         logging.info(train_mapping)
         logging.info(val_mapping)
@@ -113,7 +130,7 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augm
 
 
 def filter_anomalous_cases(mapping):
-
+    logging.info("Filtering anomalous cases")
     anomalous_cases = {
         'benign': [435, 433, 42, 131, 437, 269, 333, 399, 403, 406, 85, 164, 61, 94, 108, 114, 116, 119, 122, 201, 302,
                    394, 402, 199, 248, 242, 288, 236, 247, 233, 299, 4, 321, 25, 153],
@@ -130,7 +147,6 @@ def filter_anomalous_cases(mapping):
 if __name__ == '__main__':
     from time import perf_counter
     tic = perf_counter()
-
 
     # a, b, c = BUSI_dataloader(seed=1, batch_size=1, transforms=None)
     a, b, c = BUSI_dataloader_CV(seed=1, batch_size=1, transforms=None)
