@@ -70,7 +70,4 @@ def count_pixels(segmentation):
     unique, counts = np.unique(segmentation, return_counts=True)
     pixels_dict = dict(zip(unique, counts))
 
-    if 4.0 not in pixels_dict:
-        pixels_dict[4.0] = 0
-
     return pixels_dict
