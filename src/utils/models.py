@@ -17,6 +17,7 @@ from src.models.segmentation.FSB_BTS_UNet import FSB_BTS_UNet
 from src.models.segmentation.FSB_BTS_UNet_ import FSB_BTS_UNet_
 from src.models.multitask.Multi_BTS_UNet import Multi_BTS_UNet
 from src.models.multitask.Multi_FSB_BTS_UNet import Multi_FSB_BTS_UNet
+from src.models.multitask.Multi_FSB_BTS_UNet_ import Multi_FSB_BTS_UNet_
 from monai.networks.nets import UNet, VNet, SegResNet
 from monai.losses import DiceLoss, DiceFocalLoss, GeneralizedDiceLoss, DiceCELoss
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
@@ -340,7 +341,7 @@ def init_classification_model(
 
     if architecture == 'BTSUNetClassifier':
         model = BTSUNetClassifier(sequences=sequences, classes=classes, width=width, deep_supervision=deep_supervision)
-    if architecture == 'EfficientNet':
+    elif architecture == 'EfficientNet':
         from monai.networks.nets import EfficientNetBN
         model = EfficientNetBN("efficientnet-b0", pretrained=True, progress=True, spatial_dims=2,
                                in_channels=1, num_classes=1, norm=('batch', {'eps': 0.001, 'momentum': 0.01}),
