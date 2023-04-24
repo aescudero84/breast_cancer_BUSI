@@ -25,13 +25,6 @@ from src.utils.metrics import precision, sentitivity, specificity, accuracy, f1_
 from sklearn.metrics import confusion_matrix
 
 
-loss_function_BCE = torch.nn.BCEWithLogitsLoss()
-alpha = 1
-# alphas = [.85, .75]
-
-# for alpha in alphas:
-#     print(f"\n\n $$$$$$$$$$$$$$$$$$$$$$$ {alpha} $$$$$$$$$$$$$$$$$$$$$$$ \n\n")
-
 def train_one_epoch():
     running_training_loss = 0.
     running_dice = 0.
@@ -92,7 +85,7 @@ def train_one_epoch():
     return running_training_loss / training_loader.__len__(), running_dice / training_loader.__len__(), running_acc, running_f1_score
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def validate_one_epoch():
     running_validation_loss = 0.0
     running_validation_dice = 0.0
@@ -171,6 +164,7 @@ else:
     logging.info("CPU will be used to train the model")
 
 # initializing experiment's objects
+alpha = config_training['alpha']
 n_augments = sum([v for k, v in config_data['augmentation'].items()])
 
 transforms = torch.nn.Sequential(
@@ -210,6 +204,7 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
                                  save_folder=Path(f'./runs/{timestamp}/')).to(dev)
     optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
     loss_fn = init_loss_function(loss_function=config_loss['function'])
+    loss_function_BCE = torch.nn.BCEWithLogitsLoss()
     scheduler = CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-6)
     logging.info(f"\n\n *********************  FOLD {n}  ********************* \n\n")
 

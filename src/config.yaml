@@ -1,5 +1,5 @@
 model: # model hyper-parameters
-  architecture: Multi_FSB_BTS_UNet
+  architecture: FSB_BTS_UNet
   sequences: 1
   width: 24
   deep_supervision: True
@@ -18,12 +18,13 @@ training:
   max_patience: 100
   CV: 4
   cuda_benchmark: False
+  alpha: 0.8
 
 data:
-  input_img: Datasets/Dataset_BUSI_with_GT_postprocessed_128
+  input_img: Datasets/Dataset_BUSI_with_GT_postprocessed_128_uniques_semantic
   batch_size: 1
   train_size: 0.8
-  classes: [malignant]
+  classes: [benign, malignant]
   remove_outliers: False
   oversampling: False
   augmentation:
