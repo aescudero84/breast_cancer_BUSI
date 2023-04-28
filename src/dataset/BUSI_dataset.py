@@ -27,9 +27,16 @@ def min_max_scaler(image: np.array) -> np.array:
 
 
 class BUSI(Dataset):
-    """INSTANCE dataset."""
+    """BUSI (Breast UltraSound Image) dataset."""
 
-    def __init__(self, mapping_file: pd.DataFrame, transforms=None, augmentations={}, normalization=None):
+    def __init__(
+            self,
+            mapping_file: pd.DataFrame,
+            transforms=None,
+            augmentations={},
+            normalization=None,
+            semantic_segmentation=False
+    ):
         super(BUSI, self).__init__()
         """
         Args:
@@ -38,6 +45,7 @@ class BUSI(Dataset):
 
         self.mapping_file = mapping_file
         self.transforms = transforms
+        self.semantic_segmentation = semantic_segmentation
         self.transforms_applied = {}
         self.augmentations = True if sum([v for k, v in augmentations.items()]) else False
         if augmentations:
@@ -53,8 +61,11 @@ class BUSI(Dataset):
         for index, row in self.mapping_file.iterrows():
             # loading image and mask
             image = cv2.imread(row['img_path'], 0)
-            mask = cv2.imread(row['mask_path'], 0)
-            mask[mask == 255] = 1
+            if semantic_segmentation:
+                mask = cv2.imread(row['mask_path'], 1).transpose((2, 0, 1))
+            else:
+                mask = cv2.imread(row['mask_path'], 0)
+                mask[mask == 255] = 1
 
             # loading other features
             patient_id = row['id']
@@ -90,15 +101,17 @@ class BUSI(Dataset):
 
         patient_info = self.data[idx]
 
-        # adding channel component
+        # adding channel component is necessary
         image = torch.unsqueeze(torch.as_tensor(patient_info['image'], dtype=torch.float32), 0)
-        mask = torch.unsqueeze(torch.as_tensor(patient_info['mask'], dtype=torch.float32), 0)
+        mask = torch.as_tensor(patient_info['mask'], dtype=torch.float32)
+        if not self.semantic_segmentation:
+            mask = torch.unsqueeze(mask, 0)
 
         if self.normalization is not None:
             image = min_max_scaler(image)
 
         # Augmentations
-        if self.augmentations:
+        if self.augmentations and not self.semantic_segmentation:
             aumengs = []
 
             if self.CLAHE:
@@ -127,18 +140,23 @@ class BUSI(Dataset):
         if self.transforms is not None and not self.augmentations:
             joined = self.transforms(torch.cat([mask, image], dim=0))
             # joined, self.transforms_applied = apply_transformations(torch.cat([mask, image], dim=0), self.transforms)
-            mask = torch.unsqueeze(joined[0, :, :], 0)
-            image = torch.unsqueeze(joined[1, :, :], 0)
+            if not self.semantic_segmentation:
+                mask = torch.unsqueeze(joined[0, :, :], 0)
+                image = torch.unsqueeze(joined[1, :, :], 0)
+            else:
+                mask = joined[0:-1, :, :]
+                image = torch.unsqueeze(joined[-1, :, :], 0)
 
         # apply transformations with augmentations
-        if self.transforms is not None and self.augmentations:
+        if self.transforms is not None and self.augmentations and not self.semantic_segmentation:
             joined = torch.cat([mask, image] + aumengs, dim=0)
             joined = self.transforms(joined)
             # joined, self.transforms_applied = apply_transformations(joined, self.transforms)
             mask = torch.unsqueeze(joined[0, :, :], 0)
             image = joined[1:, :, :]
 
-        if self.transforms is None and self.augmentations:
+        # applying augmentation but not transformations
+        if self.transforms is None and self.augmentations and not self.semantic_segmentation:
             image = torch.cat([image] + aumengs, dim=0)
 
         # if self.normalization is not None:

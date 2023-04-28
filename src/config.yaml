@@ -2,7 +2,7 @@ model: # model hyper-parameters
   architecture: FSB_BTS_UNet
   sequences: 1
   width: 24
-  deep_supervision: True
+  deep_supervision: False
 
 optimizer:
   opt: Adam
@@ -21,6 +21,7 @@ training:
   alpha: 0.8
 
 data:
+  semantic_segmentation: False
   input_img: Datasets/Dataset_BUSI_with_GT_postprocessed_128_uniques_semantic
   batch_size: 1
   train_size: 0.8

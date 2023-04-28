@@ -16,7 +16,7 @@ from src.dataset.BUSI_dataset import BUSI
 
 def BUSI_dataloader(seed, batch_size, transforms, remove_outliers=False, augmentations=None, normalization=None,
                     train_size=0.8, classes=None, path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/",
-                    oversampling=True):
+                    oversampling=True, semantic_segmentation=False):
 
     # classes to use by default
     if classes is None:
@@ -54,9 +54,12 @@ def BUSI_dataloader(seed, batch_size, transforms, remove_outliers=False, augment
     logging.info(test_mapping)
 
     # Creating the train-validation-test datasets
-    train_dataset = BUSI(mapping_file=train_mapping, transforms=transforms, augmentations=augmentations, normalization=normalization)
-    val_dataset = BUSI(mapping_file=val_mapping, transforms=None, augmentations=augmentations, normalization=normalization)
-    test_dataset = BUSI(mapping_file=test_mapping, transforms=None, augmentations=augmentations, normalization=normalization)
+    train_dataset = BUSI(mapping_file=train_mapping, transforms=transforms, augmentations=augmentations,
+                         normalization=normalization, semantic_segmentation=semantic_segmentation)
+    val_dataset = BUSI(mapping_file=val_mapping, transforms=None, augmentations=augmentations,
+                       normalization=normalization, semantic_segmentation=semantic_segmentation)
+    test_dataset = BUSI(mapping_file=test_mapping, transforms=None, augmentations=augmentations,
+                        normalization=normalization, semantic_segmentation=semantic_segmentation)
 
     logging.info(f"Size of train dataset: {train_dataset.__len__()}")
     logging.info(f"Shape of images used for training: {train_dataset.__getitem__(0)['image'].shape}")
@@ -75,7 +78,7 @@ def BUSI_dataloader(seed, batch_size, transforms, remove_outliers=False, augment
 
 def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augmentations=None, normalization=None,
                        train_size=0.8, classes=None, n_folds=5, oversampling=True,
-                       path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/"):
+                       path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/", semantic_segmentation=False):
 
     # classes to use by default
     if classes is None:
@@ -117,9 +120,12 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augm
         logging.info(test_mapping)
 
         # append the corresponding subset to train-val-test sets for each CV
-        fold_trainset.append(BUSI(mapping_file=train_mapping, transforms=transforms, augmentations=augmentations, normalization=normalization))
-        fold_valset.append(BUSI(mapping_file=val_mapping, transforms=None, augmentations=augmentations, normalization=normalization))
-        fold_testset.append(BUSI(mapping_file=test_mapping, transforms=None, augmentations=augmentations, normalization=normalization))
+        fold_trainset.append(BUSI(mapping_file=train_mapping, transforms=transforms, augmentations=augmentations,
+                                  normalization=normalization, semantic_segmentation=semantic_segmentation))
+        fold_valset.append(BUSI(mapping_file=val_mapping, transforms=None, augmentations=augmentations,
+                                normalization=normalization, semantic_segmentation=semantic_segmentation))
+        fold_testset.append(BUSI(mapping_file=test_mapping, transforms=None, augmentations=augmentations,
+                                 normalization=normalization, semantic_segmentation=semantic_segmentation))
 
     # Creating a list of dataloaders. Each component of the list corresponds to a CV fold
     train_loader = [DataLoader(fold, batch_size=batch_size, shuffle=True) for fold in fold_trainset]
