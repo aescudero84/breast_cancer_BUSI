@@ -62,11 +62,11 @@ class BUSI(Dataset):
             dim1 = row['dim1']
             dim2 = row['dim2']
             tumor_pixels = row['tumor_pixels']
-            if class_ == 'malignant':
+            if class_ == 'benign':
                 label = torch.ones(1)
-            elif class_ == 'benign':
-                label = torch.zeros(1)
             elif class_ == 'normal':
+                label = torch.zeros(1)
+            elif class_ == 'malignant':
                 label = 2 * torch.ones(1)
             else:
                 raise Exception(f"\n\t-> Unknown class: {row['class']}")
