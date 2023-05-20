@@ -71,3 +71,17 @@ def count_pixels(segmentation):
     pixels_dict = dict(zip(unique, counts))
 
     return pixels_dict
+
+
+def postprocess_semantic_segmentation(segmentation):
+    segmentation_postprocessed = segmentation.copy()
+
+    counter = count_pixels(segmentation)
+    benign_pixels, malignant_pixels = counter.get(1, 0), counter.get(2, 0)
+
+    if benign_pixels >= malignant_pixels:
+        segmentation_postprocessed[segmentation_postprocessed == 2] = 1
+    else:
+        segmentation_postprocessed[segmentation_postprocessed == 1] = 2
+
+    return segmentation_postprocessed
