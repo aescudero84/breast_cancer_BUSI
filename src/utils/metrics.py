@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from numpy import logical_and as l_and, logical_not as l_not
 from scipy.spatial.distance import directed_hausdorff
+from typing import Union
 
 HAUSSDORF = "Haussdorf distance"
 DICE = "DICE"
@@ -65,6 +66,54 @@ def calculate_metrics(ground_truth: np.ndarray, segmentation: np.ndarray, patien
     metrics[PREC] = precision(tp, fp)
 
     return metrics
+
+
+def calculate_metrics_multiclass_segmentation(
+        ground_truth: np.ndarray,
+        segmentation: np.ndarray,
+        patient: str,
+        num_classes: int = 3,
+        skip_background: bool = True
+) -> dict:
+
+    assert segmentation.shape == ground_truth.shape, "Predicted segmentation and ground truth do not have the same size"
+
+    var = 0
+    if skip_background:
+        var = 1
+
+    # initializing dictionary of metrics
+    metrics_dict = dict(patient_id=patient)
+    for metric in METRICS:
+        metrics_dict[metric] = []
+
+    # iterating over all the regions
+    for i in range(var, num_classes):
+        # Ground truth and segmentation for region i-th
+        gt = (ground_truth == i).astype(float)
+        seg = (segmentation == i).astype(float)
+
+        #  cardinalities metrics tp, tn, fp, fn
+        tp = float(np.sum(l_and(seg, gt)))
+        tn = float(np.sum(l_and(l_not(seg), l_not(gt))))
+        fp = float(np.sum(l_and(seg, l_not(gt))))
+        fn = float(np.sum(l_and(l_not(seg), gt)))
+
+        # Computing all metrics
+        metrics_dict[HAUSSDORF].append(haussdorf_distance(gt, seg))
+        metrics_dict[DICE].append(dice_score(tp, fp, fn, gt, seg))
+        metrics_dict[SENS].append(sentitivity(tp, fn))
+        metrics_dict[SPEC].append(specificity(tn, fp))
+        metrics_dict[ACC].append(accuracy(tp, tn, fp, fn))
+        metrics_dict[JACC].append(jaccard_index(tp, fp, fn, gt, seg))
+        metrics_dict[PREC].append(precision(tp, fp))
+
+    # Averaging all the classes to yield a single value for each metric
+    for k in metrics_dict.keys():
+        if k != "patient_id":
+            metrics_dict[k] = np.nanmean(metrics_dict[k])
+
+    return metrics_dict
 
 
 def save_metrics(
@@ -211,8 +260,96 @@ def accuracy_from_tensor(ground_truth, prediction) -> float:
 def f1_score_from_tensor(ground_truth, prediction) -> float:
 
     tp = torch.sum(torch.logical_and(prediction, ground_truth)).double()
-    tn = torch.sum(torch.logical_and(torch.logical_not(prediction), torch.logical_not(ground_truth))).double()
     fp = torch.sum(torch.logical_and(prediction, torch.logical_not(ground_truth))).double()
     fn = torch.sum(torch.logical_and(torch.logical_not(prediction), ground_truth)).double()
 
     return (2 * tp) / (2 * tp + fp + fn)
+
+
+def DICE_coefficient_multiclass(
+        prediction: Union[np.ndarray, torch.tensor],
+        ground_truth: Union[np.ndarray, torch.tensor],
+        num_classes: int = 3,
+        skip_background: bool = True
+) -> Union[float, torch.tensor]:
+    """
+    This function calculates the DICE coefficient for multi-class semantic segmentation.
+
+    :param prediction: could be either arrays or tensors with shape (batch_size, num_classes, width, height)
+    :param ground_truth: could be either arrays or tensors with shape (batch_size, num_classes, width, height)
+    :param num_classes: number of classes within the segmentation
+    :param skip_background: if true, background will not be taken into when averaging the mean DICE
+
+    :return mean DICE over all the classes (except background if skipped)
+    """
+
+    var = 0
+    if skip_background:
+        var = 1
+
+    if isinstance(prediction, np.ndarray) and isinstance(ground_truth, np.ndarray):
+        dice = np.zeros(num_classes - var)
+        for i in range(var, num_classes):
+            mask = (prediction == i).astype(float)
+            gt = (ground_truth == i).astype(float)
+            intersection = np.sum(mask * gt)
+            union = np.sum(mask) + np.sum(gt)
+            dice[i - var] = 2.0 * intersection / union if union > 0 else 1.0
+
+        return np.mean(dice)
+    elif isinstance(prediction, torch.Tensor) and isinstance(ground_truth, torch.Tensor):
+        dice = torch.zeros(num_classes - var, device=ground_truth.device)
+        for i in range(var, num_classes):
+            mask = (prediction == i).float()
+            gt = (ground_truth == i).float()
+            intersection = torch.sum(mask * gt)
+            union = torch.sum(mask) + torch.sum(gt)
+            dice[i - var] = 2.0 * intersection / union if union > 0 else 1.0
+
+        return torch.mean(dice)
+    else:
+        raise ValueError("Inputs must be either numpy arrays or torch tensors.")
+
+
+def accuracy_multiclass(
+        prediction: Union[np.ndarray, torch.tensor],
+        ground_truth: Union[np.ndarray, torch.tensor],
+        num_classes: int = 3,
+        skip_background: bool = True
+) -> Union[float, torch.tensor]:
+
+    var = 0
+    if skip_background:
+        var = 1
+
+    if isinstance(prediction, np.ndarray) and isinstance(ground_truth, np.ndarray):
+        acc = np.zeros(num_classes - var)
+        for i in range(var, num_classes):
+            mask = (prediction == i).float()
+            gt = (ground_truth == i).float()
+
+            tp = np.sum(np.logical_and(mask, gt)).astype(float)
+            tn = np.sum(np.logical_and(np.logical_not(mask), np.logical_not(gt))).astype(float)
+            fp = np.sum(np.logical_and(mask, np.logical_not(gt))).astype(float)
+            fn = np.sum(np.logical_and(np.logical_not(mask), gt)).astype(float)
+
+            acc[i - var] = (tp + tn) / (tp + tn + fp + fn)
+
+        return np.mean(acc)
+
+    elif isinstance(prediction, torch.Tensor) and isinstance(ground_truth, torch.Tensor):
+        acc = torch.zeros(num_classes - var, device=ground_truth.device)
+        for i in range(var, num_classes):
+            mask = (prediction == i).float()
+            gt = (ground_truth == i).float()
+
+            tp = torch.sum(torch.logical_and(mask, gt)).double()
+            tn = torch.sum(torch.logical_and(torch.logical_not(mask), torch.logical_not(gt))).double()
+            fp = torch.sum(torch.logical_and(mask, torch.logical_not(gt))).double()
+            fn = torch.sum(torch.logical_and(torch.logical_not(mask), gt)).double()
+
+            acc[i - var] = (tp + tn) / (tp + tn + fp + fn)
+
+        return torch.mean(acc)
+    else:
+        raise ValueError("Inputs must be either numpy arrays or torch tensors.")
