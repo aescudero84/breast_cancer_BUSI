@@ -17,10 +17,15 @@ from src.models.segmentation.FSB_BTS_UNet import FSB_BTS_UNet
 from src.models.segmentation.FSB_BTS_UNet_ import FSB_BTS_UNet_
 from src.models.multitask.Multi_BTS_UNet import Multi_BTS_UNet
 from src.models.multitask.Multi_FSB_BTS_UNet import Multi_FSB_BTS_UNet
+from src.models.multitask.ExtendedUNetPlusPlus import ExtendedUNetPlusPlus
 from src.models.multitask.Multi_FSB_BTS_UNet_ import Multi_FSB_BTS_UNet_
-from monai.networks.nets import UNet, VNet, SegResNet
+from src.models.segmentation.FSB_BTS_UNet_bkp import FSB_BTS_UNet_bkp
+from monai.networks.nets import UNet, VNet, SegResNet, AttentionUnet, UNETR, HighResNet, BasicUNetPlusPlus
 from monai.losses import DiceLoss, DiceFocalLoss, GeneralizedDiceLoss, DiceCELoss
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
+from src.utils.metrics import calculate_metrics_multiclass_segmentation
+from src.utils.miscellany import count_pixels
+from src.utils.miscellany import postprocess_semantic_segmentation
 
 
 def load_pretrained_model(model: nn.Module, ckpt_path: str):
@@ -80,6 +85,66 @@ def inference_segmentation(model: torch.nn.Module, test_loader: torch.utils.data
 
         # saving segmentation
         save_segmentation(seg=test_outputs, path=f"{path}/segs/{label}_{patient_id}_seg.png")
+
+    results.to_csv(f'{path}/results.csv', index=False)
+
+    return results
+
+
+def inference_semantic_segmentation(model: torch.nn.Module, test_loader: torch.utils.data.DataLoader, path: str, device: str = 'cpu'):
+    results = pd.DataFrame(columns=['patient_id', 'Haussdorf distance', 'DICE', 'Sensitivity', 'Specificity',
+                                    'Accuracy', 'Jaccard index', 'Precision', 'class', 'predicted_class'])
+
+    for i, test_data in enumerate(test_loader):
+
+        # load information from patient
+        patient_id = test_data['patient_id'].item()
+        label = test_data['class'][0]
+        test_images = test_data['image'].to(device)
+        test_masks = test_data['mask'].to(device)
+
+        # generating segmentation
+        features_map = model(test_images)
+        if type(features_map) == list:
+            for n, ds in enumerate(reversed(features_map)):
+                save_features_map(seg=ds, path=f"{path}/features_map/{label}_{patient_id}_ds_{n}.png")
+            features_map = features_map[-1]  # in case that deep supervision is being used we got the last output
+        else:
+            save_features_map(seg=features_map, path=f"{path}/features_map/{label}_{patient_id}_seg.png")
+        test_outputs = torch.nn.functional.softmax(features_map)
+
+        # converting tensors to numpy arrays
+        test_masks = torch.argmax(test_masks, dim=1, keepdim=True).float().detach().cpu().numpy()
+        test_outputs = torch.argmax(test_outputs, dim=1, keepdim=True).float().detach().cpu().numpy()
+        test_outputs_postprocessed = postprocess_semantic_segmentation(test_outputs)
+
+        # getting predicted class
+        counter = count_pixels(test_outputs)
+        counter_2 = count_pixels(test_outputs_postprocessed)
+        print(counter, counter_2)
+        benign_pixels, malignant_pixels = counter.get(1, 0), counter.get(2, 0)
+        if benign_pixels >= malignant_pixels:
+            predicted_class = 'benign'
+        else:
+            predicted_class = 'malignant'
+
+        # getting segmentation metrics
+        metrics = calculate_metrics_multiclass_segmentation(test_masks, test_outputs_postprocessed, patient_id)
+        metrics['class'] = label
+        metrics['predicted_class'] = predicted_class
+        results = results.append(metrics, ignore_index=True)
+
+        # saving segmentation
+        save_semantic_segmentation(seg=test_outputs, path=f"{path}/segs/{label}_{patient_id}_seg.png")
+        save_semantic_segmentation(seg=test_outputs_postprocessed, path=f"{path}/segs/{label}_{patient_id}_seg_postprocessed.png")
+
+    # applying mapping for classification
+    mapping_class = {
+        'benign': 0,
+        'malignant': 1
+    }
+    results['numerical_class'] = results['class'].map(mapping_class)
+    results['numerical_class_predicted'] = results['predicted_class'].map(mapping_class)
 
     results.to_csv(f'{path}/results.csv', index=False)
 
@@ -193,6 +258,11 @@ def save_segmentation(seg: np.array, path: str):
     cv2.imwrite(path, seg)
 
 
+def save_semantic_segmentation(seg: np.array, path: str):
+    seg = seg[0, 0, :, :].astype(int)
+    cv2.imwrite(path, seg)
+
+
 def save_features_map(seg: np.array, path: str):
     seg = seg.detach().cpu().numpy()
     seg = seg[0, 0, :, :].astype(float)
@@ -248,6 +318,17 @@ def init_segmentation_model(
     elif architecture == 'UNet':
         model = UNet(spatial_dims=2, in_channels=sequences, out_channels=regions,
                      channels=(width, 2*width, 4*width, 8*width), strides=(2, 2, 2))
+    elif architecture == 'FSB_BTS_UNet_bkp':
+        model = FSB_BTS_UNet_bkp(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+    elif architecture == "AttentionUNet":
+        model = AttentionUnet(spatial_dims=2, in_channels=sequences, out_channels=regions,
+                              channels=(width, 2*width, 4*width, 8*width), strides=(2, 2, 2))
+    elif architecture == "HighResNet":
+        model = HighResNet(spatial_dims=2, in_channels=1, out_channels=1)
+    elif architecture == "UNETR":
+        model = UNETR(in_channels=1, out_channels=1, img_size=128, spatial_dims=2)
+    elif architecture == "UNetPlusPlus":
+        model = BasicUNetPlusPlus(in_channels=1, out_channels=1, spatial_dims=2, deep_supervision=deep_supervision)
     elif architecture == 'VNet':
         model = VNet(spatial_dims=2, in_channels=sequences, out_channels=regions)
     elif architecture == 'SegResNet':
@@ -391,6 +472,10 @@ def init_multitask_model(
         model = Multi_BTS_UNet(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
     elif architecture == 'Multi_FSB_BTS_UNet':
         model = Multi_FSB_BTS_UNet(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'Multi_FSB_BTS_UNet_':
+        model = Multi_FSB_BTS_UNet_(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+    elif architecture == "ExtendedUNetPlusPlus":
+        model = ExtendedUNetPlusPlus(in_channels=sequences, out_channels=regions, spatial_dims=2, deep_supervision=deep_supervision)
     else:
         model = torch.nn.Module()
         assert "The model selected does not exist. " \
