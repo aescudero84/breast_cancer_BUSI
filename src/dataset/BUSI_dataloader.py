@@ -135,6 +135,63 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augm
     return train_loader, val_loader, test_loader
 
 
+def BUSI_dataloader_CV_prod(seed, batch_size, transforms, remove_outliers=False, augmentations=None, normalization=None,
+                       train_size=0.8, classes=None, n_folds=5, oversampling=True,
+                       path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/", semantic_segmentation=False):
+
+    # classes to use by default
+    if classes is None:
+        classes = ['benign', 'malignant']
+
+    # Checking if the path, where the images are, exists
+    path_images = Path(path_images).resolve()
+    assert path_images.exists(), f"Path '{path_images}' it doesn't exist"
+    logging.info(f"Images are contained in the following path: {path_images}")
+
+    # loading mapping file
+    mapping = pd.read_csv(f"{path_images}/mapping.csv")
+
+    # filtering specific classes
+    mapping = mapping[mapping['class'].isin(classes)]
+
+    # splitting dataset into train-val-test CV
+    fold_trainset, fold_valset, fold_testset = [], [], []
+    kfold = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=int(seed))
+    for n, (train_ix, test_ix) in enumerate(kfold.split(mapping, mapping['class'])):
+        train_val_mapping, test_mapping = mapping.iloc[train_ix], mapping.iloc[test_ix]
+        test_mapping['fold'] = [n] * len(test_mapping)
+
+        # Splitting the mapping dataset into train_mapping, val_mapping and test_mapping
+        train_mapping, val_mapping = train_test_split(train_val_mapping, train_size=train_size, random_state=int(seed),
+                                                      shuffle=True, stratify=train_val_mapping['class'])
+
+        if remove_outliers:
+            train_mapping = filter_anomalous_cases(train_mapping)
+            val_mapping = filter_anomalous_cases(val_mapping)
+            test_mapping = filter_anomalous_cases(test_mapping)
+
+        if oversampling:
+            train_mapping_malignant = train_mapping[train_mapping['class'] == 'malignant']
+            train_mapping = pd.concat([train_mapping, train_mapping_malignant])
+
+        train_mapping = pd.concat([train_mapping, val_mapping])
+        logging.info(train_mapping)
+        logging.info(test_mapping)
+
+        # append the corresponding subset to train-val-test sets for each CV
+        fold_trainset.append(BUSI(mapping_file=train_mapping, transforms=transforms,
+                                  augmentations=augmentations,
+                                  normalization=normalization, semantic_segmentation=semantic_segmentation))
+        fold_testset.append(BUSI(mapping_file=test_mapping, transforms=None, augmentations=augmentations,
+                                 normalization=normalization, semantic_segmentation=semantic_segmentation))
+
+    # Creating a list of dataloaders. Each component of the list corresponds to a CV fold
+    train_loader = [DataLoader(fold, batch_size=batch_size, shuffle=True) for fold in fold_trainset]
+    test_loader = [DataLoader(fold, batch_size=1) for fold in fold_testset]
+
+    return train_loader, test_loader
+
+
 def filter_anomalous_cases(mapping):
     logging.info("Filtering anomalous cases")
     anomalous_cases = {
