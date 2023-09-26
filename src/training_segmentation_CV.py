@@ -11,12 +11,12 @@ import torch
 import yaml
 from torchvision import transforms
 
-from src.dataset.BUSI_dataloader import BUSI_dataloader, BUSI_dataloader_CV
-from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
+from src.dataset.BUSI_dataloader import BUSI_dataloader_CV
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from src.utils.metrics import dice_score_from_tensor
 from src.utils.miscellany import init_log
 from src.utils.miscellany import seed_everything
-from src.utils.models import inference_segmentation
+from src.utils.models import inference_binary_segmentation
 from src.utils.models import init_loss_function
 from src.utils.models import init_optimizer
 from src.utils.models import init_segmentation_model
@@ -40,7 +40,7 @@ def train_one_epoch():
         # Compute the loss and its gradients
         if type(outputs) == list:
             # if deep supervision
-            loss = torch.sum(torch.stack([loss_fn(o, masks) / (n + 1) for n, o in enumerate(reversed(outputs))]))
+            loss = torch.sum(torch.stack([loss_fn(o, masks) / (j + 1) for j, o in enumerate(reversed(outputs))]))
         else:
             loss = loss_fn(outputs, masks)
         if not torch.isnan(loss):
@@ -65,6 +65,7 @@ def train_one_epoch():
     return running_training_loss / training_loader.__len__(), running_dice / training_loader.__len__()
 
 
+@torch.no_grad()
 def validate_one_epoch():
     running_validation_loss = 0.0
     running_validation_dice = 0.0
@@ -117,7 +118,7 @@ else:
     dev = "cpu"
     logging.info("CPU will be used to train the model")
 
-
+# initializing experiment's objects
 n_augments = sum([v for k, v in config_data['augmentation'].items()])
 transforms = torch.nn.Sequential(
     # transforms.RandomCrop(128, pad_if_needed=True),
@@ -139,6 +140,7 @@ if config_training['CV'] > 1:
                                                                   normalization=None,
                                                                   classes=config_data['classes'],
                                                                   oversampling=config_data['oversampling'],
+                                                                  use_duplicated_to_train=config_data['use_duplicated_to_train'],
                                                                   path_images=config_data['input_img'])
 else:
     sys.exit("This code is prepared for receiving a CV greater than 1")
@@ -147,12 +149,14 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
 
     # creating specific paths and experiment's objects for each fold
     init_time = time.perf_counter()
-    Path(f"runs/{timestamp}/fold_{n}/segs/").mkdir(parents=True, exist_ok=True)
-    init_log(log_name=f"./runs/{timestamp}/fold_{n}/execution_fold_{n}.log")
+    run_path = (f"runs/{timestamp}_{config_model['architecture']}_{config_model['width']}_batch_"
+                f"{config_data['batch_size']}_{'_'.join(config_data['classes'])}")
+    Path(f"{run_path}/fold_{n}/segs/").mkdir(parents=True, exist_ok=True)
+    init_log(log_name=f"./{run_path}/fold_{n}/execution_fold_{n}.log")
     model = init_segmentation_model(architecture=config_model['architecture'],
                                     sequences=config_model['sequences'] + n_augments,
                                     width=config_model['width'], deep_supervision=config_model['deep_supervision'],
-                                    save_folder=Path(f'./runs/{timestamp}/')).to(dev)
+                                    save_folder=Path(f'./{run_path}/')).to(dev)
     optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
     loss_fn = init_loss_function(loss_function=config_loss['function'])
     scheduler = CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-6)
@@ -185,7 +189,7 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler': 'scheduler',
                 'val_loss': best_validation_loss
-            }, f'runs/{timestamp}/fold_{n}/model_{timestamp}_fold_{n}')
+            }, f'{run_path}/fold_{n}/model_{timestamp}_fold_{n}')
         else:
             patience += 1
 
@@ -205,14 +209,12 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
             break
 
     logging.info(f"\nTesting phase for fold {n}")
-    model = load_pretrained_model(model, f'runs/{timestamp}/fold_{n}/model_{timestamp}_fold_{n}')
-    results = inference_segmentation(model=model, test_loader=test_loader, path=f"runs/{timestamp}/fold_{n}/", device=dev)
+    model = load_pretrained_model(model, f'{run_path}/fold_{n}/model_{timestamp}_fold_{n}')
+    results = inference_binary_segmentation(model=model, test_loader=test_loader, path=f"{run_path}/fold_{n}/",
+                                            device=dev)
 
     logging.info(results)
-
     logging.info(results.mean())
-    logging.info(results.median())
-    logging.info(results.max())
 
     end_time = time.perf_counter()
     logging.info(f"Total time for fold {n}: {end_time - init_time:.2f}")

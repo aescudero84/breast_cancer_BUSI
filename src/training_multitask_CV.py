@@ -136,23 +136,30 @@ def validate_one_epoch():
     return avg_validation_loss, avg_validation_dice, running_acc, running_f1_score
 
 
-# start time
-init_time = time.perf_counter()
-# initializing folder structures and log
-timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-Path(f"runs/{timestamp}/").mkdir(parents=True, exist_ok=True)
+# alphas = [0.65, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0]
+#
+# for alpha in alphas:
 
+# start time
+start_time = time.perf_counter()
+timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 # loading config file
 with open('./src/config.yaml') as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
-    logging.info(pformat(config))
-shutil.copyfile('./src/config.yaml', f'./runs/{timestamp}/config.yaml')
 
 config_model = config['model']
 config_opt = config['optimizer']
 config_loss = config['loss']
 config_training = config['training']
 config_data = config['data']
+
+# config_training['alpha'] = alpha
+alpha = config_training['alpha']
+run_path = f"{timestamp}_{config_model['architecture']}_{config_model['width']}_alpha_{config_training['alpha']}" \
+           f"_batch_{config_data['batch_size']}"
+Path(f"runs/{run_path}/").mkdir(parents=True, exist_ok=True)
+shutil.copyfile('./src/config.yaml', f'./runs/{run_path}/config.yaml')
+logging.info(pformat(config))
 
 # initializing seed and gpu if possible
 seed_everything(config_training['seed'], cuda_benchmark=config_training['cuda_benchmark'])
@@ -164,7 +171,6 @@ else:
     logging.info("CPU will be used to train the model")
 
 # initializing experiment's objects
-alpha = config_training['alpha']
 n_augments = sum([v for k, v in config_data['augmentation'].items()])
 
 transforms = torch.nn.Sequential(
@@ -185,6 +191,7 @@ if config_training['CV'] > 1:
                                                                   normalization=None,
                                                                   classes=config_data['classes'],
                                                                   oversampling=config_data['oversampling'],
+                                                                  use_duplicated_to_train=config_data['use_duplicated_to_train'],
                                                                   path_images=config_data['input_img'])
 else:
     sys.exit("This code is prepared for receiving a CV greater than 1")
@@ -193,15 +200,15 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
 
     # creating specific paths and experiment's objects for each fold
     init_time = time.perf_counter()
-    Path(f"runs/{timestamp}/fold_{n}/segs/").mkdir(parents=True, exist_ok=True)
-    Path(f"runs/{timestamp}/fold_{n}/features_map/").mkdir(parents=True, exist_ok=True)
+    Path(f"runs/{run_path}/fold_{n}/segs/").mkdir(parents=True, exist_ok=True)
+    Path(f"runs/{run_path}/fold_{n}/features_map/").mkdir(parents=True, exist_ok=True)
 
-    init_log(log_name=f"./runs/{timestamp}/fold_{n}/execution_fold_{n}.log")
+    init_log(log_name=f"./runs/{run_path}/fold_{n}/execution_fold_{n}.log")
     model = init_multitask_model(architecture=config_model['architecture'],
                                  sequences=config_model['sequences'] + n_augments,
                                  width=config_model['width'],
                                  deep_supervision=config_model['deep_supervision'],
-                                 save_folder=Path(f'./runs/{timestamp}/')).to(dev)
+                                 save_folder=Path(f'./runs/{run_path}/')).to(dev)
     optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
     loss_fn = init_loss_function(loss_function=config_loss['function'])
     loss_function_BCE = torch.nn.BCEWithLogitsLoss()
@@ -234,7 +241,7 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler': 'scheduler',
                 'val_loss': best_validation_loss
-            }, f'runs/{timestamp}/fold_{n}/model_{timestamp}_fold_{n}')
+            }, f'runs/{run_path}/fold_{n}/model_{timestamp}_fold_{n}')
         else:
             patience += 1
 
@@ -258,8 +265,8 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
             break
 
     logging.info(f"\nTesting phase for fold {n}")
-    model = load_pretrained_model(model, f'runs/{timestamp}/fold_{n}/model_{timestamp}_fold_{n}')
-    results, metrics = inference_multitask(model=model, test_loader=test_loader, path=f"runs/{timestamp}/fold_{n}/",
+    model = load_pretrained_model(model, f'runs/{run_path}/fold_{n}/model_{timestamp}_fold_{n}')
+    results, metrics = inference_multitask(model=model, test_loader=test_loader, path=f"runs/{run_path}/fold_{n}/",
                                            device=dev)
 
     logging.info(results)
