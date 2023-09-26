@@ -77,7 +77,7 @@ def BUSI_dataloader(seed, batch_size, transforms, remove_outliers=False, augment
 
 
 def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augmentations=None, normalization=None,
-                       train_size=0.8, classes=None, n_folds=5, oversampling=True,
+                       train_size=0.8, classes=None, n_folds=5, oversampling=True, use_duplicated_to_train=False,
                        path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/", semantic_segmentation=False):
 
     # classes to use by default
@@ -91,6 +91,10 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augm
 
     # loading mapping file
     mapping = pd.read_csv(f"{path_images}/mapping.csv")
+
+    if use_duplicated_to_train:
+        mapping = filter_incongruent_cases(mapping)
+        mapping, mapping_out_complementary = filter_train_cases(mapping)
 
     # filtering specific classes
     mapping = mapping[mapping['class'].isin(classes)]
@@ -111,13 +115,17 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augm
             val_mapping = filter_anomalous_cases(val_mapping)
             test_mapping = filter_anomalous_cases(test_mapping)
 
+        if use_duplicated_to_train:
+            logging.info(f"DD: {train_mapping.shape} {mapping_out_complementary.shape}")
+            train_mapping = pd.concat([train_mapping, mapping_out_complementary])
+
         if oversampling:
             train_mapping_malignant = train_mapping[train_mapping['class'] == 'malignant']
             train_mapping = pd.concat([train_mapping, train_mapping_malignant])
 
-        logging.info(train_mapping)
-        logging.info(val_mapping)
-        logging.info(test_mapping)
+        logging.info(f"Train size: {train_mapping.shape}")
+        logging.info(f"Train size: {val_mapping.shape}")
+        logging.info(f"Train size: {test_mapping.shape}")
 
         # append the corresponding subset to train-val-test sets for each CV
         fold_trainset.append(BUSI(mapping_file=train_mapping, transforms=transforms, augmentations=augmentations,
@@ -205,6 +213,50 @@ def filter_anomalous_cases(mapping):
         mapping = mapping[~((mapping['class'] == cls) & (mapping['id'].isin(ids)))]
 
     return mapping
+
+
+def filter_incongruent_cases(mapping):
+    logging.info("Filtering anomalous cases")
+    mapping_out = mapping.copy()
+    anomalous_cases = {
+        'benign': [42, 131, 269, 333, 399, 406, 433, 437, 85, 164, 333],
+        'malignant': [51, 52, 77, 78, 93, 94, 145, 51, 52],
+        'normal': [1, 34]
+    }
+
+    for cls, ids in anomalous_cases.items():
+        mapping_out = mapping_out[~((mapping_out['class'] == cls) & (mapping_out['id'].isin(ids)))]
+
+    return mapping_out
+
+
+def filter_train_cases(mapping):
+    logging.info("Filtering anomalous cases")
+    mapping_out = mapping.copy()
+    anomalous_cases = {
+        'benign': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 25, 30, 33, 35, 37, 38, 44,
+                   50, 51, 52, 58, 60, 62, 64, 65, 81, 86, 96, 99, 105, 110, 127, 128, 129, 130, 132, 133, 134, 135,
+                   136, 138, 139, 140, 141, 150, 151, 152, 153, 154, 155, 156, 157, 158, 163, 177, 197, 199, 200, 201,
+                   202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222,
+                   223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242,
+                   244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263,
+                   264, 265, 266, 267, 268, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 284, 285,
+                   287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301, 302, 303, 304, 305, 306,
+                   307, 308, 309, 310, 312, 316, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331,
+                   332, 395, 396, 400, 404, 411, 412, 413, 415, 419, 421, 422, 423, 424, 425, 426],
+        'malignant': [4, 5, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18, 34, 39, 42, 65, 66, 80, 81, 88, 92, 95, 96, 97, 98, 99,
+                      106, 107, 109, 110, 111, 112, 114, 116, 118, 119, 123, 128, 129],
+        'normal': [5, 13, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 35, 38, 39, 40, 41, 42, 43, 44,
+                   45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 67, 68, 69, 81, 97,
+                   98, 104, 107, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132]
+    }
+
+    for cls, ids in anomalous_cases.items():
+        mapping_out = mapping_out[~((mapping_out['class'] == cls) & (mapping_out['id'].isin(ids)))]
+
+    mapping_out_complementary = mapping.loc[~mapping.index.isin(mapping_out.index)]
+
+    return mapping_out, mapping_out_complementary
 
 
 if __name__ == '__main__':
