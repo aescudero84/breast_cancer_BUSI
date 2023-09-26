@@ -73,7 +73,8 @@ def calculate_metrics_multiclass_segmentation(
         segmentation: np.ndarray,
         patient: str,
         num_classes: int = 3,
-        skip_background: bool = True
+        skip_background: bool = True,
+        averaging: bool = True
 ) -> dict:
 
     assert segmentation.shape == ground_truth.shape, "Predicted segmentation and ground truth do not have the same size"
@@ -107,6 +108,9 @@ def calculate_metrics_multiclass_segmentation(
         metrics_dict[ACC].append(accuracy(tp, tn, fp, fn))
         metrics_dict[JACC].append(jaccard_index(tp, fp, fn, gt, seg))
         metrics_dict[PREC].append(precision(tp, fp))
+
+    if not averaging:
+        return metrics_dict
 
     # Averaging all the classes to yield a single value for each metric
     for k in metrics_dict.keys():
