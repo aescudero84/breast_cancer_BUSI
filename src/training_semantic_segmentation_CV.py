@@ -16,7 +16,7 @@ from src.dataset.BUSI_dataloader import BUSI_dataloader_CV
 from src.utils.metrics import dice_score_from_tensor
 from src.utils.miscellany import init_log
 from src.utils.miscellany import seed_everything
-from src.utils.models import inference_semantic_segmentation
+from src.utils.models import inference_multilabel_segmentation
 from src.utils.models import init_loss_function
 from src.utils.models import init_optimizer
 from src.utils.models import init_segmentation_model
@@ -24,7 +24,6 @@ from src.utils.models import load_pretrained_model
 from src.utils.metrics import DICE_coefficient_multiclass
 from sklearn.metrics import confusion_matrix
 from src.utils.metrics import precision, sentitivity, specificity, accuracy, f1_score
-
 
 
 def dice_loss_function_semantic(outputs, masks, smooth=1, squared=True):
@@ -38,7 +37,7 @@ def dice_loss_function_semantic(outputs, masks, smooth=1, squared=True):
 
     denominator = (torch.sum(y_true_f) + torch.sum(y_pred_f) + smooth)
 
-    loss = 1 - (2. * intersection + smooth) / denominator
+    loss = 1 - (2. * intersection + smooth) / (denominator + smooth)
 
     return loss
 
@@ -62,7 +61,8 @@ def train_one_epoch():
         if type(outputs) == list:
             # if deep supervision
             outputs = [torch.nn.functional.softmax(o, dim=1) for o in outputs]
-            loss = torch.sum(torch.stack([dice_loss_function_semantic(o, masks) / (n + 1) for n, o in enumerate(reversed(outputs))]))
+            loss = torch.sum(torch.stack([loss_fn(o, masks) / (n + 1) for n, o in enumerate(reversed(outputs))]))
+            # loss = torch.sum(torch.stack([dice_loss_function_semantic(o, masks) / (n + 1) for n, o in enumerate(reversed(outputs))]))
         else:
             outputs = torch.nn.functional.softmax(outputs, dim=1)
             loss = dice_loss_function_semantic(outputs, masks)
@@ -101,7 +101,8 @@ def validate_one_epoch():
 
         if type(validation_outputs) == list:
             validation_outputs = [torch.nn.functional.softmax(vo, dim=1) for vo in validation_outputs]
-            validation_loss = torch.sum(torch.stack([dice_loss_function_semantic(vo, validation_masks) / (n + 1) for n, vo in enumerate(reversed(validation_outputs))]))
+            validation_loss = torch.sum(torch.stack([loss_fn(vo, validation_masks) / (n + 1) for n, vo in enumerate(reversed(validation_outputs))]))
+            # validation_loss = torch.sum(torch.stack([dice_loss_function_semantic(vo, validation_masks) / (n + 1) for n, vo in enumerate(reversed(validation_outputs))]))
         else:
             validation_outputs = torch.nn.functional.softmax(validation_outputs, dim=1)
             validation_loss = dice_loss_function_semantic(validation_outputs, validation_masks)
@@ -239,7 +240,7 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
 
     logging.info(f"\nTesting phase for fold {n}")
     model = load_pretrained_model(model, f'runs/{timestamp}/fold_{n}/model_{timestamp}_fold_{n}')
-    results = inference_semantic_segmentation(model=model, test_loader=test_loader, path=f"runs/{timestamp}/fold_{n}/", device=dev)
+    results = inference_multilabel_segmentation(model=model, test_loader=test_loader, path=f"runs/{timestamp}/fold_{n}/", device=dev)
     logging.info(results.mean())
 
     # getting metrics from classification task

@@ -15,7 +15,7 @@ from src.dataset.BUSI_dataloader import BUSI_dataloader
 from src.utils.metrics import dice_score_from_tensor
 from src.utils.miscellany import init_log
 from src.utils.miscellany import seed_everything
-from src.utils.models import inference_segmentation
+from src.utils.models import inference_binary_segmentation
 from src.utils.models import init_loss_function
 from src.utils.models import init_optimizer
 from src.utils.models import init_segmentation_model
@@ -33,8 +33,6 @@ def train_one_epoch():
         # Zero your gradients for every batch!
         optimizer.zero_grad(set_to_none=True)
 
-        # enable auto-casting
-        # with autocast(enabled=False):
         # Make predictions for this batch
         outputs = model(inputs)
 
@@ -50,9 +48,6 @@ def train_one_epoch():
             logging.info("NaN in model loss!!")
 
         # Performing backward step through scaler methodology
-        # scaler.scale(loss).backward()
-        # scaler.step(optimizer)
-        # scaler.update()
         loss.backward()
         optimizer.step()
 
@@ -207,15 +202,11 @@ for epoch in range(config_training['epochs']):
         break
 
 logging.info(f"\nTesting phase")
-
 model = load_pretrained_model(model, f'runs/{timestamp}/model_{timestamp}')
-results = inference_segmentation(model=model, test_loader=test_loader, path=f"runs/{timestamp}", device=dev)
+results = inference_binary_segmentation(model=model, test_loader=test_loader, path=f"runs/{timestamp}", device=dev)
 
 logging.info(results)
-
 logging.info(results.mean())
-logging.info(results.median())
-logging.info(results.max())
 
 end_time = time.perf_counter()
 logging.info(f"Total time: {end_time - init_time:.2f}")
