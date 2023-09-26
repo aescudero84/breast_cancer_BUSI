@@ -16,7 +16,7 @@ from src.dataset.BUSI_dataloader import BUSI_dataloader_CV_prod
 from src.utils.metrics import dice_score_from_tensor
 from src.utils.miscellany import init_log
 from src.utils.miscellany import seed_everything
-from src.utils.models import inference_segmentation
+from src.utils.models import inference_binary_segmentation
 from src.utils.models import init_loss_function
 from src.utils.models import init_optimizer
 from src.utils.models import init_segmentation_model
@@ -132,7 +132,6 @@ for n, (training_loader, test_loader) in enumerate(zip(train_loaders, test_loade
     scheduler = CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-6)
     logging.info(f"\n\n *********************  FOLD {n}  ********************* \n\n")
 
-    best_validation_loss = 1_000_000.
     for epoch in range(config_training['epochs']):
         start_epoch_time = time.perf_counter()
 
@@ -170,14 +169,13 @@ for n, (training_loader, test_loader) in enumerate(zip(train_loaders, test_loade
         'epoch': config_training['epochs'],
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
-        'scheduler': 'scheduler',
-        'val_loss': best_validation_loss
+        'scheduler': 'scheduler'
     }, f'runs/{run_path}/fold_{n}/model_{timestamp}_fold_{n}')
 
     logging.info(f"\nTesting phase for fold {n}")
     model = load_pretrained_model(model, f'runs/{run_path}/fold_{n}/model_{timestamp}_fold_{n}')
-    results = inference_segmentation(model=model, test_loader=test_loader, path=f"runs/{run_path}/fold_{n}/",
-                                     device=dev, threshold_postprocessing=config_training['threshold_postprocessing'])
+    results = inference_binary_segmentation(model=model, test_loader=test_loader, path=f"runs/{run_path}/fold_{n}/",
+                                            device=dev)
     logging.info(results)
     logging.info(results.mean())
 
