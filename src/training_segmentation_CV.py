@@ -95,13 +95,11 @@ def validate_one_epoch():
 
 # initializing folder structures and log
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-Path(f"runs/{timestamp}/").mkdir(parents=True, exist_ok=True)
 
 # loading config file
 with open('./src/config.yaml') as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
     logging.info(pformat(config))
-shutil.copyfile('./src/config.yaml', f'./runs/{timestamp}/config.yaml')
 
 config_model = config['model']
 config_opt = config['optimizer']
@@ -152,6 +150,7 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
     run_path = (f"runs/{timestamp}_{config_model['architecture']}_{config_model['width']}_batch_"
                 f"{config_data['batch_size']}_{'_'.join(config_data['classes'])}")
     Path(f"{run_path}/fold_{n}/segs/").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile('./src/config.yaml', f'./{run_path}/config.yaml')
     init_log(log_name=f"./{run_path}/fold_{n}/execution_fold_{n}.log")
     model = init_segmentation_model(architecture=config_model['architecture'],
                                     sequences=config_model['sequences'] + n_augments,
