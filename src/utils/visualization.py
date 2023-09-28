@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 from numpy import logical_and as l_and, logical_not as l_not
 from skimage import morphology, measure
 import pandas as pd
@@ -47,3 +48,28 @@ def plot_overlapping(image, mask, segmentation):
     axs[3].axis('off')
     plt.legend(handles=legend_elements, bbox_to_anchor=(0, 0), ncol=3, fontsize=24)
     plt.show()
+
+
+def plot_metrics_evolution(df_melted, path):
+
+    # Configuraciones adicionales para hacer el gráfico más atractivo
+    sns.set_style("whitegrid")
+
+    # Personaliza el tamaño del gráfico
+    plt.figure(figsize=(16, 8))
+
+    # Trazar las líneas con colores y estilo personalizados
+    sns.lineplot(data=df_melted, x='epoch', y='y', hue='linea', palette='husl',
+                 style='linea', markers=False, dashes=True)
+
+    # Agrega título y etiquetas
+    plt.title('Evolucion de la metrica DICE')
+    plt.xlabel('Epoch')
+    plt.ylabel('DICE')
+
+    # Ajusta la leyenda
+    plt.legend(title='')
+
+    # Muestra el gráfico
+#     plt.show()
+    plt.savefig(f'{path}')
