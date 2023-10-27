@@ -22,7 +22,7 @@ from src.utils.miscellany import save_segmentation_results
 from src.utils.miscellany import load_config_file
 from src.utils.miscellany import write_metrics_file
 from src.utils.criterions import apply_criterion_binary_segmentation
-from src.utils.experiment_init import load_experiments_artefacts
+from src.utils.experiment_init import load_segmentation_experiment_artefacts
 from src.utils.experiment_init import device_setup
 
 
@@ -132,8 +132,8 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
     Path(f"{run_path}/fold_{n}/plots/").mkdir(parents=True, exist_ok=True)
 
     # artefacts initialization
-    model, optimizer, criterion, scheduler = load_experiments_artefacts(config_model, config_opt, config_loss,
-                                                                        n_augments, run_path)
+    model, optimizer, criterion, scheduler = load_segmentation_experiment_artefacts(config_model, config_opt, 
+                                                                                    config_loss, n_augments, run_path)
     model = model.to(dev)
 
     # init metrics file
