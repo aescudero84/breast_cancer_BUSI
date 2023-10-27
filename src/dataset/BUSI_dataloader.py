@@ -262,6 +262,36 @@ def filter_train_cases(mapping):
     return mapping_out, mapping_out_complementary
 
 
+def load_datasets(config_training, config_data, transforms, mode='CV'):
+    if mode == 'CV':
+        train_loaders, val_loaders, test_loaders = BUSI_dataloader_CV(seed=config_training['seed'],
+                                                                      batch_size=config_data['batch_size'],
+                                                                      transforms=transforms,
+                                                                      remove_outliers=config_data['remove_outliers'],
+                                                                      train_size=config_data['train_size'],
+                                                                      n_folds=config_training['CV'],
+                                                                      augmentations=config_data['augmentation'],
+                                                                      normalization=None,
+                                                                      classes=config_data['classes'],
+                                                                      oversampling=config_data['oversampling'],
+                                                                      use_duplicated_to_train=config_data['use_duplicated_to_train'],
+                                                                      path_images=config_data['input_img'])
+        return train_loaders, val_loaders, test_loaders
+    if mode == 'CV_PROD':
+        train_loaders, test_loaders = BUSI_dataloader_CV_prod(seed=config_training['seed'],
+                                                              batch_size=config_data['batch_size'],
+                                                              transforms=transforms,
+                                                              remove_outliers=config_data['remove_outliers'],
+                                                              train_size=config_data['train_size'],
+                                                              n_folds=config_training['CV'],
+                                                              augmentations=config_data['augmentation'],
+                                                              normalization=None,
+                                                              classes=config_data['classes'],
+                                                              oversampling=config_data['oversampling'],
+                                                              path_images=config_data['input_img'])
+        return train_loaders, test_loaders
+
+
 if __name__ == '__main__':
     from time import perf_counter
     tic = perf_counter()
