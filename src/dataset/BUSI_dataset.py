@@ -1,29 +1,17 @@
 from __future__ import print_function, division
 
+import random
+
 import cv2
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-import numpy as np
-import random
 from torchvision.transforms.functional import rotate, hflip, vflip
 
-
-def count_pixels(segmentation):
-    unique, counts = np.unique(segmentation, return_counts=True)
-    pixels_dict = dict(zip(unique, counts))
-
-    return pixels_dict
-
-
-def min_max_scaler(image: np.array) -> np.array:
-    """ Min max scaler function."""
-
-    min_, max_ = torch.min(image), torch.max(image)
-    image = (image - min_) / (max_ - min_)
-
-    return image
+from src.utils.images import min_max_scaler
+from src.utils.custom_transforms import apply_SOBEL_filter
 
 
 class BUSI(Dataset):
@@ -33,15 +21,14 @@ class BUSI(Dataset):
             self,
             mapping_file: pd.DataFrame,
             transforms=None,
-            augmentations={},
+            augmentations=None,
             normalization=None,
             semantic_segmentation=False
     ):
         super(BUSI, self).__init__()
-        """
-        Args:
-            mapping_file (string): Path to the mapping file
-        """
+
+        if augmentations is None:
+            augmentations = {}
 
         self.mapping_file = mapping_file
         self.transforms = transforms
@@ -50,6 +37,7 @@ class BUSI(Dataset):
         self.augmentations = True if sum([v for k, v in augmentations.items()]) else False
         if augmentations:
             self.CLAHE = augmentations.get("CLAHE", False)
+            self.SOBEL = augmentations.get("SOBEL", False)
             self.brightness_brighter = augmentations.get("brightness_brighter", False)
             self.brightness_darker = augmentations.get("brightness_darker", False)
             self.contrast_high = augmentations.get("contrast_high", False)
@@ -121,12 +109,17 @@ class BUSI(Dataset):
             image = min_max_scaler(image)
 
         # Augmentations
+        aumengs = []
         if self.augmentations and not self.semantic_segmentation:
-            aumengs = []
 
             if self.CLAHE:
                 clahe = cv2.createCLAHE(clipLimit=5, tileGridSize=(4, 4))
-                aumengs.append(torch.unsqueeze(torch.as_tensor(clahe.apply(patient_info['image']), dtype=torch.float32), 0))
+                aumengs.append(torch.unsqueeze(torch.as_tensor(clahe.apply(patient_info['image']),
+                                                               dtype=torch.float32), 0))
+
+            if self.SOBEL:
+                aumengs.append(torch.unsqueeze(torch.as_tensor(apply_SOBEL_filter(patient_info['image']),
+                                                               dtype=torch.float32), 0))
 
             if self.brightness_brighter:  # brightness
                 brightness_matrix = np.ones(patient_info['image'].shape, dtype='uint8') * 80
@@ -185,29 +178,8 @@ class BUSI(Dataset):
             # 'transforms_applied': self.transforms_applied
         }
 
-# if '__main__' == __name__:
-#
-#     mapping = pd.read_csv("./Datasets/Dataset_BUSI_with_GT_postprocessed_128/mapping.csv")
-#     transforms = torch.nn.Sequential(
-#         transforms.RandomCrop(500, pad_if_needed=True),
-#     )
-#     # dataset = BUSI(mapping_file="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/mapping.csv", transform=transforms)
-#     dataset = BUSI(mapping_file=mapping, transform=None)
-#
-#     # for i in range(dataset.__len__()):
-#     #     print(dataset.__getitem__(i)['mask'].max(), dataset.__getitem__(i)['mask'].min())
-#
-#     patient = dataset.__getitem__(601)
-#
-#     print(patient['image'].shape)
-#
-#     plt.imshow(patient['image'][0, :, :], cmap='gray')
-#     plt.show()
-#     plt.imshow(patient['mask'][0, :, :], cmap='gray')
-#     plt.show()
 
-
-def apply_transformations(image, transforms):
+def testing_apply_transformations(image, transforms_sequential):
 
     # This will store the transformations applied
     transforms_applied = {'horizontal_flip': False, 'vertical_flip': False, 'rotation': 0}
@@ -216,19 +188,19 @@ def apply_transformations(image, transforms):
     # plt.show()
     #
     # Random horizontal flips
-    if random.random() < transforms.get('horizontal_flip') != .0:
+    if random.random() < transforms_sequential.get('horizontal_flip') != .0:
         transforms_applied['horizontal_flip'] = True
         image = hflip(image)
         # plt.imshow(image[0, 0, :, :], cmap='gray')
         # plt.show()
     # Random vertical flips
-    if random.random() < transforms.get('vertical_flip') != .0:
+    if random.random() < transforms_sequential.get('vertical_flip') != .0:
         transforms_applied['vertical_flip'] = True
         image = vflip(image)
         # plt.imshow(image[0, 0, :, :], cmap='gray')
         # plt.show()
     # Random rotations between 0-360 degrees
-    if random.random() < transforms.get('rotation'):
+    if random.random() < transforms_sequential.get('rotation'):
         # angle = random.randint(0, 360)
         angle = int(np.random.choice(range(0, 360)))
         transforms_applied['rotation'] = angle
@@ -252,7 +224,6 @@ if __name__ == '__main__':
 
     )
 
-
     img = cv2.imread("./../../Datasets/Dataset_BUSI_with_GT_postprocessed_128/images/malignant_id_30.png", 0)
     img = torch.unsqueeze(torch.unsqueeze(torch.as_tensor(img, dtype=torch.float32), 0), 0)
     plt.imshow(img[0, 0, :, :], cmap='gray')
@@ -263,10 +234,6 @@ if __name__ == '__main__':
     plt.show()
 
     transforms = {'horizontal_flip': 1, 'vertical_flip': 1, 'rotation': 0}
-    img_2, transforms_applied = apply_transformations(img, transforms)
+    img_2, transforms_applied = testing_apply_transformations(img, transforms)
     plt.imshow(img_2[0, 0, :, :], cmap='gray')
     plt.show()
-
-    print(img_1 == img_2)
-
-    print(transforms_applied)
