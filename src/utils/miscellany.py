@@ -6,6 +6,26 @@ import pprint
 import logging
 import argparse
 import numpy as np
+import pandas as pd
+import glob
+import yaml
+from pprint import pformat
+
+
+def load_config_file(path: str):
+    """
+    This function load a config file and return the different sections.
+
+
+    Parameters
+    ----------
+    path: Path where the config file is stored
+
+    """
+    with open(path) as cf:
+        config = yaml.load(cf, Loader=yaml.FullLoader)
+        logging.info(pformat(config))
+    return config['model'], config['optimizer'], config['loss'], config['training'], config['data']
 
 
 def save_args(args: argparse.Namespace):
@@ -54,6 +74,15 @@ def init_log(log_name: str):
 
 
 def seed_everything(seed: int, cuda_benchmark: bool = False):
+    """
+    This function initializes all the seeds
+
+    Params:
+    *******
+        - seed: seed number
+        - cuda_benchmark: flag to activate/deactivate CUDA optimization algorithms
+
+    """
 
     os.environ['PYTHONHASHSEED'] = str(seed)
     random.seed(seed)
@@ -65,23 +94,18 @@ def seed_everything(seed: int, cuda_benchmark: bool = False):
     torch.backends.cudnn.benchmark = cuda_benchmark
 
 
-def count_pixels(segmentation):
+def save_segmentation_results(path):
+    results = []
+    for n, f in enumerate(sorted(glob.glob(path + "/fold*/results.csv"))):
+        df = pd.read_csv(f)
+        df["fold"] = n
+        results.append(df)
 
-    unique, counts = np.unique(segmentation, return_counts=True)
-    pixels_dict = dict(zip(unique, counts))
-
-    return pixels_dict
-
-
-def postprocess_semantic_segmentation(segmentation):
-    segmentation_postprocessed = segmentation.copy()
-
-    counter = count_pixels(segmentation)
-    benign_pixels, malignant_pixels = counter.get(1, 0), counter.get(2, 0)
-
-    if benign_pixels >= malignant_pixels:
-        segmentation_postprocessed[segmentation_postprocessed == 2] = 1
-    else:
-        segmentation_postprocessed[segmentation_postprocessed == 1] = 2
-
-    return segmentation_postprocessed
+    df = pd.concat(results)
+    df_grouped = df.drop(columns="patient_id").groupby('fold').mean().reset_index().drop(columns='fold').T
+    df_grouped.columns = [f"fold {c}" for c in df_grouped.columns]
+    df_grouped["mean"] = df_grouped.mean(axis=1)
+    df_grouped["std"] = df_grouped.std(axis=1)
+    df_grouped["latex"] = (round(df_grouped["mean"], 3).astype(str).str.ljust(5, '0') + " $pm$ " +
+                           round(df_grouped["std"], 3).astype(str).str.ljust(5, '0'))
+    df_grouped.to_excel(path + '/segmentation_results.xlsx', index=False)

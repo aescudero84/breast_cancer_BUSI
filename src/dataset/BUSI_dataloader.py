@@ -1,17 +1,17 @@
 import logging
-from pathlib import Path
 import warnings
-warnings.filterwarnings("ignore")
+from pathlib import Path
+
 import pandas as pd
+from sklearn.model_selection import train_test_split, StratifiedKFold
+from torch.utils.data import DataLoader
+
+from src.dataset.BUSI_dataset import BUSI
+
+warnings.filterwarnings("ignore")
 desired_width = 320
 pd.set_option('display.width', desired_width)
 pd.set_option('display.max_columns', 10)
-import torch
-from sklearn.model_selection import train_test_split, StratifiedKFold
-from torch.utils.data import DataLoader
-from torchvision import transforms
-
-from src.dataset.BUSI_dataset import BUSI
 
 
 def BUSI_dataloader(seed, batch_size, transforms, remove_outliers=False, augmentations=None, normalization=None,
@@ -121,8 +121,11 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augm
 
         if oversampling:
             train_mapping_malignant = train_mapping[train_mapping['class'] == 'malignant']
-            train_mapping = pd.concat([train_mapping, train_mapping_malignant])
+            train_mapping_normal = train_mapping[train_mapping['class'] == 'normal']
+            train_mapping = pd.concat([train_mapping, train_mapping_malignant,
+                                       train_mapping_normal, train_mapping_normal, train_mapping_normal])
 
+        logging.info(f"\n{train_mapping['class'].value_counts(normalize=True)}")
         logging.info(f"Train size: {train_mapping.shape}")
         logging.info(f"Train size: {val_mapping.shape}")
         logging.info(f"Train size: {test_mapping.shape}")
@@ -144,8 +147,8 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augm
 
 
 def BUSI_dataloader_CV_prod(seed, batch_size, transforms, remove_outliers=False, augmentations=None, normalization=None,
-                       train_size=0.8, classes=None, n_folds=5, oversampling=True,
-                       path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/", semantic_segmentation=False):
+                            train_size=0.8, classes=None, n_folds=5, oversampling=True, semantic_segmentation=False,
+                            path_images="./Datasets/Dataset_BUSI_with_GT_postprocessed_128/"):
 
     # classes to use by default
     if classes is None:
