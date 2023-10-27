@@ -53,8 +53,8 @@ def calculate_metrics(ground_truth: np.ndarray, segmentation: np.ndarray, patien
     fn = float(np.sum(l_and(l_not(seg), gt)))
 
     # If a region is not present in the ground truth some metrics are not defined
-    if np.sum(gt) == 0:
-        logging.info(f"Tumor not present for {patient}")
+    # if np.sum(gt) == 0:
+    #     logging.info(f"Tumor not present for {patient}")
 
     # Computing all metrics
     metrics[HAUSSDORF] = haussdorf_distance(gt, seg)
