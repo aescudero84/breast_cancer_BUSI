@@ -94,7 +94,15 @@ def seed_everything(seed: int, cuda_benchmark: bool = False):
     torch.backends.cudnn.benchmark = cuda_benchmark
 
 
-def save_segmentation_results(path):
+def save_segmentation_results(path: str):
+    """
+    This function combines the segmentation results obtained on each fold into a single file (segmentation_results.xlsx)
+
+    Params:
+    *******
+        - path: root path of the experiment
+
+    """
     results = []
     for n, f in enumerate(sorted(glob.glob(path + "/fold*/results.csv"))):
         df = pd.read_csv(f)
@@ -106,6 +114,23 @@ def save_segmentation_results(path):
     df_grouped.columns = [f"fold {c}" for c in df_grouped.columns]
     df_grouped["mean"] = df_grouped.mean(axis=1)
     df_grouped["std"] = df_grouped.std(axis=1)
-    df_grouped["latex"] = (round(df_grouped["mean"], 3).astype(str).str.ljust(5, '0') + " $pm$ " +
+    df_grouped["latex"] = (round(df_grouped["mean"], 3).astype(str).str.ljust(5, '0') + " $\\pm$ " +
                            round(df_grouped["std"], 3).astype(str).str.ljust(5, '0'))
     df_grouped.to_excel(path + '/segmentation_results.xlsx', index=False)
+
+
+def write_metrics_file(path_file, text_to_write, close=True):
+    """
+    This function allows us to write text in a given file
+
+    Params:
+    *******
+        - path_file: path to the file
+        - text_to_write: line to writen within the file
+
+    """
+    with open(path_file, 'a') as fm:
+        fm.write(text_to_write)
+        fm.write("\n")
+        if close:
+            fm.close()
