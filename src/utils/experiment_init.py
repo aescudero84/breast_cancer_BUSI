@@ -260,11 +260,55 @@ def init_lr_scheduler(
 ) -> torch.optim.lr_scheduler:
 
     if scheduler == 'plateau':
-        sche = ReduceLROnPlateau(optimizer, mode='min', factor=factor, patience=patience, min_lr=min_lr, verbose=True)
+        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=factor, patience=patience, min_lr=min_lr, verbose=True)
     elif scheduler == "cosine":
-        sche = CosineAnnealingLR(optimizer, T_max=t_max, eta_min=min_lr)
+        scheduler = CosineAnnealingLR(optimizer, T_max=t_max, eta_min=min_lr)
     else:
         print("Select a loss function allowed: ['DICE', 'FocalDICE', 'GeneralizedDICE', 'CrossentropyDICE', 'Jaccard']")
         sys.exit()
 
-    return sche
+    return scheduler
+
+
+def load_segmentation_experiment_artefacts(config_model, config_opt, config_loss, n_augments, run_path):
+
+    model = init_segmentation_model(architecture=config_model['architecture'],
+                                    sequences=config_model['sequences'] + n_augments,
+                                    width=config_model['width'], deep_supervision=config_model['deep_supervision'],
+                                    save_folder=Path(f'./{run_path}/'))
+    optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
+    criterion = init_criterion_segmentation(loss_function=config_loss['function'])
+    scheduler = init_lr_scheduler(optimizer=optimizer, scheduler=config_opt['scheduler'], t_max=int(config_opt['t_max']),
+                                  patience=int(config_opt['patience']), min_lr=float(config_opt['min_lr']),
+                                  factor=float(config_opt['decrease_factor']))
+
+    return model, optimizer, criterion, scheduler
+
+
+def load_multitask_experiment_artefacts(config_data, config_model, config_opt, config_loss, n_augments, run_path):
+
+    model = init_multitask_model(architecture=config_model['architecture'],
+                                 sequences=config_model['sequences'] + n_augments,
+                                 width=config_model['width'],
+                                 n_classes=len(config_data['classes']),
+                                 deep_supervision=config_model['deep_supervision'],
+                                 save_folder=Path(f'{run_path}/'))
+    optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
+    segmentation_criterion = init_criterion_segmentation(loss_function=config_loss['function'])
+    classification_criterion = init_criterion_classification(n_classes=len(config_data['classes']),
+                                                             classes_weighted=[0.493, 0.364, 0.142])
+    scheduler = init_lr_scheduler(optimizer=optimizer, scheduler=config_opt['scheduler'],
+                                  t_max=40, patience=20, min_lr=1e-6, factor=0.5)
+
+    return model, optimizer, segmentation_criterion, classification_criterion, scheduler
+
+
+def device_setup():
+    if torch.cuda.is_available():
+        dev = "cuda:0"
+        logging.info("GPU will be used to train the model")
+    else:
+        dev = "cpu"
+        logging.info("CPU will be used to train the model")
+
+    return dev
