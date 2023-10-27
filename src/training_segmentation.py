@@ -1,24 +1,22 @@
 import logging
 import shutil
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from pprint import pformat
-import random
+
 import numpy as np
 import torch
-import yaml
 from torchvision import transforms
-from torch.cuda.amp import autocast, GradScaler
-from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
+
 from src.dataset.BUSI_dataloader import BUSI_dataloader
+from src.utils.experiment_init import device_setup
+from src.utils.experiment_init import load_experiments_artefacts
 from src.utils.metrics import dice_score_from_tensor
 from src.utils.miscellany import init_log
+from src.utils.miscellany import load_config_file
 from src.utils.miscellany import seed_everything
 from src.utils.models import inference_binary_segmentation
-from src.utils.models import init_loss_function
-from src.utils.models import init_optimizer
-from src.utils.models import init_segmentation_model
 from src.utils.models import load_pretrained_model
 
 
@@ -39,9 +37,9 @@ def train_one_epoch():
         # Compute the loss and its gradients
         if type(outputs) == list:
             # if deep supervision
-            loss = torch.sum(torch.stack([loss_fn(o, masks) / (n + 1) for n, o in enumerate(reversed(outputs))]))
+            loss = torch.sum(torch.stack([criterion(o, masks) / (n + 1) for n, o in enumerate(reversed(outputs))]))
         else:
-            loss = loss_fn(outputs, masks)
+            loss = criterion(outputs, masks)
         if not torch.isnan(loss):
             running_training_loss += loss.item()
         else:
@@ -74,9 +72,9 @@ def validate_one_epoch():
         validation_outputs = model(validation_images)
         if type(validation_outputs) == list:
             validation_loss = torch.sum(torch.stack(
-                [loss_fn(vo, validation_masks) / (n + 1) for n, vo in enumerate(reversed(validation_outputs))]))
+                [criterion(vo, validation_masks) / (n + 1) for n, vo in enumerate(reversed(validation_outputs))]))
         else:
-            validation_loss = loss_fn(validation_outputs, validation_masks)
+            validation_loss = criterion(validation_outputs, validation_masks)
         running_validation_loss += validation_loss
 
         # measuring DICE
@@ -92,48 +90,28 @@ def validate_one_epoch():
     return avg_validation_loss, avg_validation_dice
 
 
-# start time
+# initializing times
 init_time = time.perf_counter()
-# initializing folder structures and log
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-Path(f"runs/{timestamp}/segs/").mkdir(parents=True, exist_ok=True)
-Path(f"runs/{timestamp}/features_map/").mkdir(parents=True, exist_ok=True)
-init_log(log_name=f"./runs/{timestamp}/execution.log")
 
 # loading config file
-with open('./src/config.yaml') as f:
-    config = yaml.load(f, Loader=yaml.FullLoader)
-    logging.info(pformat(config))
-shutil.copyfile('./src/config.yaml', f'./runs/{timestamp}/config.yaml')
-
-config_model = config['model']
-config_opt = config['optimizer']
-config_loss = config['loss']
-config_training = config['training']
-config_data = config['data']
+config_model, config_opt, config_loss, config_training, config_data = load_config_file(path='./src/config.yaml')
+if config_training['CV'] < 2:
+    sys.exit("This code is prepared for receiving a CV greater than 1")
 
 # initializing seed and gpu if possible
 seed_everything(config_training['seed'], cuda_benchmark=config_training['cuda_benchmark'])
-if torch.cuda.is_available():
-    dev = "cuda:0"
-    logging.info("GPU will be used to train the model")
-else:
-    dev = "cpu"
-    logging.info("CPU will be used to train the model")
+dev = device_setup()
+
+# initializing folder structures and log
+run_path = (f"runs/{timestamp}_{config_model['architecture']}_{config_model['width']}_batch_"
+            f"{config_data['batch_size']}_{'_'.join(config_data['classes'])}")
+Path(f"{run_path}").mkdir(parents=True, exist_ok=True)
+init_log(log_name=f"./{run_path}/execution.log")
+shutil.copyfile('./src/config.yaml', f'./{run_path}/config.yaml')
 
 # initializing experiment's objects
 n_augments = sum([v for k, v in config_data['augmentation'].items()])
-model = init_segmentation_model(architecture=config_model['architecture'],
-                                sequences=config_model['sequences'] + n_augments,
-                                width=config_model['width'],
-                                deep_supervision=config_model['deep_supervision'],
-                                save_folder=Path(f'./runs/{timestamp}/')).to(dev)
-optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
-loss_fn = init_loss_function(loss_function=config_loss['function'])
-# scaler = GradScaler()  # create a GradScaler object for scaling the gradients
-# scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, min_lr=1e-6, verbose=True)
-scheduler = CosineAnnealingLR(optimizer, T_max=20, eta_min=1e-6)
-
 transforms = torch.nn.Sequential(
     # transforms.RandomCrop(128, pad_if_needed=True),
     transforms.RandomHorizontalFlip(p=0.5),
@@ -155,6 +133,9 @@ training_loader, validation_loader, test_loader = BUSI_dataloader(seed=config_tr
                                                                   classes=config_data['classes'],
                                                                   path_images=config_data['input_img'],
                                                                   oversampling=config_data['oversampling'])
+model, optimizer, criterion, scheduler = load_experiments_artefacts(config_model, config_opt, config_loss,
+                                                                    n_augments, run_path)
+model = model.to(dev)
 
 best_validation_loss = 1_000_000.
 patience = 0
