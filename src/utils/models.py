@@ -86,7 +86,7 @@ def inference_binary_segmentation(
         save_binary_segmentation(seg=test_outputs, path=f"{path}/segs/{label}_{patient_id}_seg.png")
 
     # saving metrics results
-    results.to_csv(f'{path}/results.csv', index=False)
+    results.to_csv(f'{path}/segmentation_results.csv', index=False)
 
     return results
 

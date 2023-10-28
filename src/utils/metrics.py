@@ -6,6 +6,12 @@ import torch
 from numpy import logical_and as l_and, logical_not as l_not
 from scipy.spatial.distance import directed_hausdorff
 from typing import Union
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import precision_score
+from sklearn.metrics import recall_score
+from sklearn.metrics import f1_score as f1
+from sklearn.metrics import accuracy_score
+
 
 HAUSSDORF = "Haussdorf distance"
 DICE = "DICE"
@@ -270,6 +276,11 @@ def f1_score_from_tensor(ground_truth, prediction) -> float:
     return (2 * tp) / (2 * tp + fp + fn)
 
 
+##################################################################################################################
+###############################         MULTICLASS SEGMENTATION METRICS          #################################
+##################################################################################################################
+
+
 def DICE_coefficient_multiclass(
         prediction: Union[np.ndarray, torch.tensor],
         ground_truth: Union[np.ndarray, torch.tensor],
@@ -357,3 +368,81 @@ def accuracy_multiclass(
         return torch.mean(acc)
     else:
         raise ValueError("Inputs must be either numpy arrays or torch tensors.")
+
+
+################################################################################################################
+###############################         BINARY CLASSIFICATION METRICS          #################################
+################################################################################################################
+
+def binary_classification_metrics(ground_truth, predictions):
+    metrics = {}
+
+    # getting confusion matrix
+    cm = confusion_matrix(y_true=ground_truth, y_pred=predictions).ravel()
+    tn, fp, fn, tp = cm.ravel()
+
+    metrics["Precision"] = precision(tp, fp)
+    metrics["Sensitivity"] = sentitivity(tp, fn)
+    metrics["Specificity"] = specificity(tn, fp)
+    metrics["Accuracy"] = accuracy(tp, tn, fp, fn)
+    metrics["F1 score"] = f1_score(tp, fp, fn)
+
+    return metrics
+
+
+####################################################################################################################
+###############################         MULTICLASS CLASSIFICATION METRICS          #################################
+####################################################################################################################
+
+def multiclass_classification_metrics(ground_truth, predictions, labels=None):
+    if labels is None:
+        labels = [0, 1, 2]
+
+    precisions = calculate_precision_multiclass(ground_truth, predictions, labels)
+    recalls = calculate_recall_multiclass(ground_truth, predictions, labels)
+    f1_scores = calculate_f1_multiclass(ground_truth, predictions, labels)
+    acc = {"accuracy": accuracy_score(ground_truth, predictions)}
+
+    return {**precisions, **recalls, **f1_scores, **acc}
+
+
+def calculate_precision_multiclass(ground_truth, predictions, labels):
+    precisions = {}
+
+    individual_precisions = precision_score(ground_truth, predictions, labels=labels, average=None)
+    for n, value in enumerate(individual_precisions):
+        precisions[f"precision_class_{n}"] = value
+
+    precisions['precision_macro'] = precision_score(ground_truth, predictions, labels=labels, average='macro')
+    precisions['precision_micro'] = precision_score(ground_truth, predictions, labels=labels, average='micro')
+    precisions['precision_weighted'] = precision_score(ground_truth, predictions, labels=labels, average='weighted')
+
+    return precisions
+
+
+def calculate_recall_multiclass(ground_truth, predictions, labels):
+    recalls = {}
+
+    individual_recalls = recall_score(ground_truth, predictions, labels=labels, average=None)
+    for n, value in enumerate(individual_recalls):
+        recalls[f"recall_class_{n}"] = value
+
+    recalls['recall_macro'] = recall_score(ground_truth, predictions, labels=labels, average='macro')
+    recalls['recall_micro'] = recall_score(ground_truth, predictions, labels=labels, average='micro')
+    recalls['recall_weighted'] = recall_score(ground_truth, predictions, labels=labels, average='weighted')
+
+    return recalls
+
+
+def calculate_f1_multiclass(ground_truth, predictions, labels):
+    f1_scores = {}
+
+    individual_f1_scores = f1(ground_truth, predictions, labels=labels, average=None)
+    for n, value in enumerate(individual_f1_scores):
+        f1_scores[f"f1_class_{n}"] = value
+
+    f1_scores['f1_macro'] = f1(ground_truth, predictions, labels=labels, average='macro')
+    f1_scores['f1_micro'] = f1(ground_truth, predictions, labels=labels, average='micro')
+    f1_scores['f1_weighted'] = f1(ground_truth, predictions, labels=labels, average='weighted')
+
+    return f1_scores

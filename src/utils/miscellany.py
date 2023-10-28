@@ -10,6 +10,8 @@ import pandas as pd
 import glob
 import yaml
 from pprint import pformat
+from src.utils.metrics import binary_classification_metrics
+from src.utils.metrics import multiclass_classification_metrics
 
 
 def load_config_file(path: str):
@@ -104,7 +106,7 @@ def save_segmentation_results(path: str):
 
     """
     results = []
-    for n, f in enumerate(sorted(glob.glob(path + "/fold*/results.csv"))):
+    for n, f in enumerate(sorted(glob.glob(path + "/fold*/results_segmentation.csv"))):
         df = pd.read_csv(f)
         df["fold"] = n
         results.append(df)
@@ -116,7 +118,38 @@ def save_segmentation_results(path: str):
     df_grouped["std"] = df_grouped.std(axis=1)
     df_grouped["latex"] = (round(df_grouped["mean"], 3).astype(str).str.ljust(5, '0') + " $\\pm$ " +
                            round(df_grouped["std"], 3).astype(str).str.ljust(5, '0'))
-    df_grouped.to_excel(path + '/segmentation_results.xlsx', index=False)
+    df_grouped.to_excel(path + '/results_segmentation.xlsx', index=False)
+
+
+def save_classification_results(path: str, n_classes: int):
+    """
+    This function combines the segmentation results obtained on each fold into a single file (segmentation_results.xlsx)
+
+    Params:
+    *******
+        - path: root path of the experiment
+        - n_classes: it defines whether the problem is binary or multiclass classification
+
+    """
+    results, metric = [], {}
+    for n, f in enumerate(sorted(glob.glob(path + "/fold*/results_classification.csv"))):
+        df = pd.read_csv(f)
+
+        if n_classes <= 2:
+            metric = binary_classification_metrics(df.ground_truth, df.predicted_label)
+        else:
+            metric = multiclass_classification_metrics(df.ground_truth, df.predicted_label)
+
+        results.append(pd.DataFrame([metric]))
+
+    df_grouped = pd.concat(results).T
+    df_grouped.columns = [f"fold {c}" for c in df_grouped.columns]
+    df_grouped["mean"] = df_grouped.mean(axis=1)
+    df_grouped["std"] = df_grouped.std(axis=1)
+    df_grouped["latex"] = (round(df_grouped["mean"], 3).astype(str).str.ljust(5, '0') + " $\\pm$ " +
+                           round(df_grouped["std"], 3).astype(str).str.ljust(5, '0'))
+
+    df_grouped.to_excel(path + '/classification_results.xlsx', index=True)
 
 
 def write_metrics_file(path_file, text_to_write, close=True):
