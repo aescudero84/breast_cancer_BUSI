@@ -120,10 +120,7 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augm
             train_mapping = pd.concat([train_mapping, mapping_out_complementary])
 
         if oversampling:
-            train_mapping_malignant = train_mapping[train_mapping['class'] == 'malignant']
-            train_mapping_normal = train_mapping[train_mapping['class'] == 'normal']
-            train_mapping = pd.concat([train_mapping, train_mapping_malignant,
-                                       train_mapping_normal, train_mapping_normal, train_mapping_normal])
+            train_mapping = oversampling_BUSI(train_mapping, seed)
 
         logging.info(f"\n{train_mapping['class'].value_counts(normalize=True)}")
         logging.info(f"Train size: {train_mapping.shape}")
@@ -260,6 +257,20 @@ def filter_train_cases(mapping):
     mapping_out_complementary = mapping.loc[~mapping.index.isin(mapping_out.index)]
 
     return mapping_out, mapping_out_complementary
+
+
+def oversampling_BUSI(mapping, seed):
+    n_ben = len(mapping[mapping['class'] == 'benign'])
+    if 'malignant' in set(mapping['class']):
+        n_mal = len(mapping[mapping['class'] == 'malignant'])
+        extra_malignant_images = mapping[mapping['class'] == 'malignant'].sample(n=n_ben - n_mal, random_state=seed)
+        mapping = pd.concat([mapping, extra_malignant_images])
+    if 'normal' in set(mapping['class']):
+        n_nor = len(mapping[mapping['class'] == 'normal'])
+        extra_normal_images = mapping[mapping['class'] == 'normal'].sample(n=n_ben - n_nor, random_state=seed, replace=True)
+        mapping = pd.concat([mapping, extra_normal_images])
+
+    return mapping
 
 
 def load_datasets(config_training, config_data, transforms, mode='CV'):
