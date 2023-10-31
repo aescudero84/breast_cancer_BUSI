@@ -11,7 +11,7 @@ from src.models.segmentation.FSB_BTS_UNet import FSB_BTS_UNet
 from src.models.segmentation.FSB_BTS_UNet_ import FSB_BTS_UNet_
 from src.models.segmentation.FSB_BTS_UNet__ import FSB_BTS_UNet__
 from src.models.segmentation.FSB_BTS_UNet___ import FSB_BTS_UNet___
-from src.models.segmentation.FSB_BTS_UNet_a import FSB_BTS_UNet_a
+# from src.models.segmentation.FSB_BTS_UNet_a import FSB_BTS_UNet_a
 from src.models.segmentation.TransUNet import TransUNet
 from src.models.multitask.Multi_BTS_UNet import Multi_BTS_UNet
 from src.models.multitask.Multi_FSB_BTS_UNet import Multi_FSB_BTS_UNet
@@ -20,7 +20,7 @@ from src.models.multitask.Multi_FSB_BTS_UNet_v2 import Multi_FSB_BTS_UNet_v2
 from src.models.multitask.ExtendedUNetPlusPlus import ExtendedUNetPlusPlus
 from src.models.segmentation.FSB_BTS_UNet_test1 import FSB_BTS_UNet_test1
 from monai.networks.nets import UNet, AttentionUnet, BasicUnetPlusPlus
-from monai.losses import DiceLoss, DiceFocalLoss, GeneralizedDiceLoss, DiceCELoss
+from monai.losses import DiceLoss, DiceFocalLoss, GeneralizedDiceLoss, DiceCELoss, HausdorffDTLoss
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
 from monai.networks.nets import SwinUNETR, SegResNet
 from src.utils.models import count_parameters
@@ -212,6 +212,8 @@ def init_criterion_segmentation(loss_function: str = "dice") -> torch.nn.Module:
     if loss_function == 'DICE':
         loss_function_criterion = DiceLoss(include_background=True, sigmoid=True, smooth_dr=1, smooth_nr=1,
                                            squared_pred=True)
+    if loss_function == 'Hausdorff':
+        loss_function_criterion = HausdorffDTLoss(sigmoid=True)
     elif loss_function == "FocalDICE":
         loss_function_criterion = DiceFocalLoss(include_background=True, sigmoid=True, squared_pred=True)
     elif loss_function == "GeneralizedDICE":
