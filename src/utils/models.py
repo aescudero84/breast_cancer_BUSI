@@ -12,6 +12,7 @@ from src.utils.metrics import calculate_metrics
 from src.utils.metrics import calculate_metrics_multiclass_segmentation
 from src.utils.images import count_pixels
 from src.utils.images import postprocess_semantic_segmentation
+from scipy.ndimage import binary_fill_holes
 
 
 def load_pretrained_model(model: nn.Module, ckpt_path: str):
@@ -38,7 +39,8 @@ def inference_binary_segmentation(
         model: torch.nn.Module,
         test_loader: torch.utils.data.DataLoader,
         path: str,
-        device: str = 'cpu'
+        device: str = 'cpu',
+        fill_holes: bool = True
 ):
     """
     It performs binary inference over PyTorch dataloader by means of a trained model. It means that pixels will be
@@ -48,6 +50,7 @@ def inference_binary_segmentation(
     :param test_loader: Test dataloader to be evaluated
     :param path: path to store the segmentations
     :param device: CPU or GPU
+    :param fill_holes: fill holes in the predicted segmentation
 
     :return: CSV file containing the main metrics
     """
@@ -77,6 +80,11 @@ def inference_binary_segmentation(
         test_masks = test_masks.detach().cpu().numpy()
         test_outputs = test_outputs.detach().cpu().numpy()
 
+        if fill_holes:
+            test_outputs = test_outputs.astype(np.uint8)[0, 0, :, :]
+            test_masks = test_masks.astype(np.uint8)[0, 0, :, :]
+            test_outputs = binary_fill_holes(test_outputs).astype(int)
+
         # getting metrics
         metrics = calculate_metrics(test_masks, test_outputs, patient_id)
         metrics['class'] = label
@@ -86,7 +94,7 @@ def inference_binary_segmentation(
         save_binary_segmentation(seg=test_outputs, path=f"{path}/segs/{label}_{patient_id}_seg.png")
 
     # saving metrics results
-    results.to_csv(f'{path}/segmentation_results.csv', index=False)
+    results.to_csv(f'{path}/results_segmentation.csv', index=False)
 
     return results
 
