@@ -1,36 +1,48 @@
 model: # model hyper-parameters
-  architecture: FSB_BTS_UNet
+  architecture: ExtendedUNetPlusPlus
   sequences: 1
   width: 24
   deep_supervision: True
 
 optimizer:
   opt: Adam
-  lr: 0.001
+  lr: 0.0001
+  scheduler: plateau
+  patience: 10
+  min_lr: 1e-7
+  decrease_factor: 0.5
+  t_max: 40
 
 loss:
   function:  DICE
+  inversely_weighted: True
+  classification_criterion: Focal
 
 training:
   debug: False
   seed: 1993
-  epochs: 5000
+  epochs: 2000
   max_patience: 100
   CV: 4
   cuda_benchmark: False
-  alpha: 0.8
+  alpha: 0.85
+  threshold_postprocessing: 0
+  overlap_seg_based_on_class: True
+  overlap_class_based_on_seg: True
 
 data:
   semantic_segmentation: False
-  input_img: Datasets/Dataset_BUSI_with_GT_postprocessed_128
-  batch_size: 1
+  input_img: Datasets/Dataset_BUSI_with_GT_postprocessed_128_uniques
+  batch_size: 2
   train_size: 0.8
-  classes: [benign, malignant]
+  classes: [benign, malignant, normal]
+  classes_weighted: [1, 1, 1]
   use_duplicated_to_train: False
   remove_outliers: False
-  oversampling: False
+  oversampling: True
   augmentation:
     CLAHE: False
+    SOBEL: False
     brightness_brighter: False
     brightness_darker: False
     contrast_high: False
