@@ -120,12 +120,13 @@ def BUSI_dataloader_CV(seed, batch_size, transforms, remove_outliers=False, augm
             train_mapping = pd.concat([train_mapping, mapping_out_complementary])
 
         if oversampling:
-            train_mapping = oversampling_BUSI(train_mapping, seed)
+            # train_mapping = oversampling_BUSI(train_mapping, seed)
+            train_mapping = deterministic_oversampling_BUSI(train_mapping, seed)
 
         logging.info(f"\n{train_mapping['class'].value_counts(normalize=True)}")
         logging.info(f"Train size: {train_mapping.shape}")
-        logging.info(f"Train size: {val_mapping.shape}")
-        logging.info(f"Train size: {test_mapping.shape}")
+        logging.info(f"Validation size: {val_mapping.shape}")
+        logging.info(f"Test size: {test_mapping.shape}")
 
         # append the corresponding subset to train-val-test sets for each CV
         fold_trainset.append(BUSI(mapping_file=train_mapping, transforms=transforms, augmentations=augmentations,
@@ -259,19 +260,32 @@ def filter_train_cases(mapping):
     return mapping_out, mapping_out_complementary
 
 
-def oversampling_BUSI(mapping, seed):
-    n_ben = len(mapping[mapping['class'] == 'benign'])
-    if 'malignant' in set(mapping['class']):
-        n_mal = len(mapping[mapping['class'] == 'malignant'])
-        extra_malignant_images = mapping[mapping['class'] == 'malignant'].sample(n=n_ben - n_mal, random_state=seed)
-        mapping = pd.concat([mapping, extra_malignant_images])
-    if 'normal' in set(mapping['class']):
-        n_nor = len(mapping[mapping['class'] == 'normal'])
-        extra_normal_images = mapping[mapping['class'] == 'normal'].sample(n=n_ben - n_nor, random_state=seed, replace=True)
-        mapping = pd.concat([mapping, extra_normal_images])
+def oversampling_BUSI(mapping_df, seed):
+    n_ben = len(mapping_df[mapping_df['class'] == 'benign'])
+    if 'malignant' in set(mapping_df['class']):
+        n_mal = len(mapping_df[mapping_df['class'] == 'malignant'])
+        extra_malignant_images = mapping_df[mapping_df['class'] == 'malignant'].sample(n=n_ben - n_mal, random_state=seed)
+        mapping_df = pd.concat([mapping_df, extra_malignant_images])
+    if 'normal' in set(mapping_df['class']):
+        n_nor = len(mapping_df[mapping_df['class'] == 'normal'])
+        extra_normal_images = mapping_df[mapping_df['class'] == 'normal'].sample(n=n_ben - n_nor, random_state=seed, replace=True)
+        mapping_df = pd.concat([mapping_df, extra_normal_images])
 
-    return mapping
+    return mapping_df
 
+
+def deterministic_oversampling_BUSI(mapping_df, seed):
+    if 'benign' in set(mapping_df['class']):
+        df_bening = mapping_df[mapping_df['class'] == 'benign']
+        mapping_df = pd.concat([mapping_df, df_bening])
+    if 'malignant' in set(mapping_df['class']):
+        df_malignant = mapping_df[mapping_df['class'] == 'malignant']
+        mapping_df = pd.concat([mapping_df, df_malignant, df_malignant])
+    if 'normal' in set(mapping_df['class']):
+        df_normal = mapping_df[mapping_df['class'] == 'normal']
+        mapping_df = pd.concat([mapping_df, df_normal, df_normal, df_normal, df_normal, df_normal, df_normal])
+
+    return mapping_df
 
 def load_datasets(config_training, config_data, transforms, mode='CV'):
     if mode == 'CV':
