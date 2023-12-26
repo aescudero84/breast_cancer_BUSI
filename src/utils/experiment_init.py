@@ -11,18 +11,30 @@ from src.models.segmentation.FSB_BTS_UNet import FSB_BTS_UNet
 from src.models.segmentation.FSB_BTS_UNet_ import FSB_BTS_UNet_
 from src.models.segmentation.FSB_BTS_UNet__ import FSB_BTS_UNet__
 from src.models.segmentation.FSB_BTS_UNet___ import FSB_BTS_UNet___
-# from src.models.segmentation.FSB_BTS_UNet_a import FSB_BTS_UNet_a
+from src.models.segmentation.FSB_BTS_UNet_v2 import FSB_BTS_UNet_v2
+from src.models.segmentation.FSB_BTS_UNet_v3 import FSB_BTS_UNet_v3
+from src.models.segmentation.FSB_BTS_UNet_v5 import FSB_BTS_UNet_v5
+from src.models.segmentation.FSB_BTS_UNet_v6 import FSB_BTS_UNet_v6
+from src.models.segmentation.FSB_BTS_UNet_v7 import FSB_BTS_UNet_v7
+# from src.models.segmentation.FSB_BTS_UNet_a import FSB_BTS_UNet
 from src.models.segmentation.TransUNet import TransUNet
 from src.models.multitask.Multi_BTS_UNet import Multi_BTS_UNet
 from src.models.multitask.Multi_FSB_BTS_UNet import Multi_FSB_BTS_UNet
 from src.models.multitask.Multi_FSB_BTS_UNet__ import Multi_FSB_BTS_UNet_
 from src.models.multitask.Multi_FSB_BTS_UNet_v2 import Multi_FSB_BTS_UNet_v2
+from src.models.multitask.Multi_FSB_BTS_UNet_new import Multi_FSB_BTS_UNet_new
+from src.models.multitask.Multi_FSB_BTS_UNet_newteam import Multi_FSB_BTS_UNet_newteam
+from src.models.multitask.Multi_FSB_BTS_UNet_new_pretrained import Multi_FSB_BTS_UNet_new_pretrained
+from src.models.multitask.Multi_FSB_BTS_UNet_new_new import Multi_FSB_BTS_UNet_new_new
+from src.models.multitask.Multi_FSB_BTS_UNet_new_2 import Multi_FSB_BTS_UNet_new_2
+from src.models.multitask.Multi_FSB_BTS_UNet3 import Multi_FSB_BTS_UNet3
 from src.models.multitask.ExtendedUNetPlusPlus import ExtendedUNetPlusPlus
+from src.models.multitask.ExtendedUNetPlusPlusV2 import ExtendedUNetPlusPlusV2
 from src.models.segmentation.FSB_BTS_UNet_test1 import FSB_BTS_UNet_test1
 from monai.networks.nets import UNet, AttentionUnet, BasicUnetPlusPlus
-from monai.losses import DiceLoss, DiceFocalLoss, GeneralizedDiceLoss, DiceCELoss, HausdorffDTLoss
+from monai.losses import DiceLoss, DiceFocalLoss, GeneralizedDiceLoss, DiceCELoss, HausdorffDTLoss, FocalLoss
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
-from monai.networks.nets import SwinUNETR, SegResNet
+from monai.networks.nets import SwinUNETR, SegResNet, AHNet
 from src.utils.models import count_parameters
 
 
@@ -59,11 +71,21 @@ def init_segmentation_model(
         model = FSB_BTS_UNet__(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
     elif architecture == 'FSB_BTS_UNet___':
         model = FSB_BTS_UNet___(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
-    elif architecture == 'FSB_BTS_UNet_a':
-        model = FSB_BTS_UNet_a(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'FSB_BTS_UNet_v2':
+        model = FSB_BTS_UNet_v2(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'FSB_BTS_UNet_v3':
+        model = FSB_BTS_UNet_v3(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'FSB_BTS_UNet_v5':
+        model = FSB_BTS_UNet_v5(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'FSB_BTS_UNet_v6':
+        model = FSB_BTS_UNet_v6(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'FSB_BTS_UNet_v7':
+        model = FSB_BTS_UNet_v7(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
     elif architecture == 'UNet':
         model = UNet(spatial_dims=2, in_channels=sequences, out_channels=regions,
                      channels=(width, 2*width, 4*width, 8*width), strides=(2, 2, 2))
+    elif architecture == 'AHNet':
+        model = AHNet(spatial_dims=2, in_channels=sequences, out_channels=regions)
     elif architecture == "AttentionUNet":
         model = AttentionUnet(spatial_dims=2, in_channels=sequences, out_channels=regions,
                               channels=(width, 2*width, 4*width, 8*width), strides=(2, 2, 2))
@@ -169,15 +191,29 @@ def init_multitask_model(
     logging.info(f"Creating {architecture} model")
     logging.info(f"The model will be fed with {sequences} sequences")
     if architecture == 'Multi_BTSUNet':
-        model = Multi_BTS_UNet(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+        model = Multi_BTS_UNet(sequences=sequences, regions=regions, n_classes=n_classes, width=width, deep_supervision=deep_supervision)
     elif architecture == 'Multi_FSB_BTS_UNet':
         model = Multi_FSB_BTS_UNet(sequences=sequences, regions=regions, n_classes=n_classes, width=width, deep_supervision=deep_supervision)
     elif architecture == 'Multi_FSB_BTS_UNet_':
-        model = Multi_FSB_BTS_UNet_(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+        model = Multi_FSB_BTS_UNet_(sequences=sequences, regions=regions, n_classes=n_classes, width=width, deep_supervision=deep_supervision)
     elif architecture == 'Multi_FSB_BTS_UNet_v2':
-        model = Multi_FSB_BTS_UNet_v2(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+        model = Multi_FSB_BTS_UNet_v2(sequences=sequences, regions=regions, n_classes=n_classes, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'Multi_FSB_BTS_UNet_new':
+        model = Multi_FSB_BTS_UNet_new(sequences=sequences, regions=regions, n_classes=n_classes, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'Multi_FSB_BTS_UNet_newteam':
+        model = Multi_FSB_BTS_UNet_newteam(sequences=sequences, regions=regions, n_classes=n_classes, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'Multi_FSB_BTS_UNet_new_pretrained':
+        model = Multi_FSB_BTS_UNet_new_pretrained(sequences=sequences, regions=regions, n_classes=n_classes, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'Multi_FSB_BTS_UNet_new_new':
+        model = Multi_FSB_BTS_UNet_new_new(sequences=sequences, regions=regions, n_classes=n_classes, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'Multi_FSB_BTS_UNet_new_2':
+        model = Multi_FSB_BTS_UNet_new_2(sequences=sequences, regions=regions, n_classes=n_classes, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'Multi_FSB_BTS_UNet3':
+        model = Multi_FSB_BTS_UNet3(sequences=sequences, regions=regions, n_classes=n_classes, width=width, deep_supervision=deep_supervision)
     elif architecture == 'ExtendedUNetPlusPlus':
-        model = ExtendedUNetPlusPlus(in_channels=sequences, out_channels=regions, deep_supervision=deep_supervision)
+        model = ExtendedUNetPlusPlus(in_channels=sequences, out_channels=regions, n_classes=n_classes, deep_supervision=deep_supervision)
+    elif architecture == 'ExtendedUNetPlusPlusV2':
+        model = ExtendedUNetPlusPlusV2(in_channels=sequences, out_channels=regions, n_classes=n_classes, deep_supervision=deep_supervision)
     else:
         model = torch.nn.Module()
         assert "The model selected does not exist. " \
@@ -212,16 +248,19 @@ def init_criterion_segmentation(loss_function: str = "dice") -> torch.nn.Module:
     if loss_function == 'DICE':
         loss_function_criterion = DiceLoss(include_background=True, sigmoid=True, smooth_dr=1, smooth_nr=1,
                                            squared_pred=True)
-    if loss_function == 'Hausdorff':
+    elif loss_function == 'Hausdorff':
         loss_function_criterion = HausdorffDTLoss(sigmoid=True)
     elif loss_function == "FocalDICE":
-        loss_function_criterion = DiceFocalLoss(include_background=True, sigmoid=True, squared_pred=True)
+        loss_function_criterion = DiceFocalLoss(include_background=True, sigmoid=True, smooth_dr=1, smooth_nr=1,
+                                                squared_pred=True)
     elif loss_function == "GeneralizedDICE":
         loss_function_criterion = GeneralizedDiceLoss(include_background=True, sigmoid=True)
     elif loss_function == "CrossentropyDICE":
         loss_function_criterion = DiceCELoss(include_background=True, sigmoid=True, squared_pred=True)
     elif loss_function == "Jaccard":
         loss_function_criterion = DiceLoss(include_background=True, sigmoid=True, jaccard=True, reduction="sum")
+    elif loss_function == "FocalLoss":
+        loss_function_criterion = FocalLoss(include_background=True)
     elif loss_function == "BCE":
         loss_function_criterion = torch.nn.BCEWithLogitsLoss()
     else:
@@ -231,7 +270,7 @@ def init_criterion_segmentation(loss_function: str = "dice") -> torch.nn.Module:
     return loss_function_criterion
 
 
-def init_criterion_classification(n_classes: int = 2, classes_weighted=None) -> torch.nn.Module:
+def init_criterion_classification(n_classes: int = 2, classes_weighted=None, classification_criterion="CE") -> torch.nn.Module:
     if n_classes == 2:
         loss_function_criterion = torch.nn.BCEWithLogitsLoss()
     else:
@@ -245,9 +284,15 @@ def init_criterion_classification(n_classes: int = 2, classes_weighted=None) -> 
             weight_tensor = torch.tensor(class_weights / class_weights.sum(), dtype=torch.float)
 
             # Define the loss function with class weights
-            loss_function_criterion = torch.nn.CrossEntropyLoss(weight=weight_tensor.to("cuda"))
+            if classification_criterion == "Focal":
+                loss_function_criterion = FocalLoss(weight=weight_tensor.to("cuda"), use_softmax=True)
+            else:
+                loss_function_criterion = torch.nn.CrossEntropyLoss(weight=weight_tensor.to("cuda"))
         else:
-            loss_function_criterion = torch.nn.CrossEntropyLoss()
+            if classification_criterion == "Focal":
+                loss_function_criterion = FocalLoss(use_softmax=True)
+            else:
+                loss_function_criterion = torch.nn.CrossEntropyLoss()
 
     return loss_function_criterion
 
@@ -298,9 +343,12 @@ def load_multitask_experiment_artefacts(config_data, config_model, config_opt, c
     optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
     segmentation_criterion = init_criterion_segmentation(loss_function=config_loss['function'])
     classification_criterion = init_criterion_classification(n_classes=len(config_data['classes']),
-                                                             classes_weighted=[0.493, 0.364, 0.142])
+                                                             classes_weighted=config_data["classes_weighted"],
+                                                             classification_criterion=config_loss['classification_criterion'])
+                                                             # classes_weighted=[0.493, 0.364, 0.142])
     scheduler = init_lr_scheduler(optimizer=optimizer, scheduler=config_opt['scheduler'],
-                                  t_max=40, patience=20, min_lr=1e-6, factor=0.5)
+                                  t_max=int(config_opt['t_max']), patience=int(config_opt['patience']),
+                                  min_lr=float(config_opt['min_lr']), factor=float(config_opt['decrease_factor']))
 
     return model, optimizer, segmentation_criterion, classification_criterion, scheduler
 

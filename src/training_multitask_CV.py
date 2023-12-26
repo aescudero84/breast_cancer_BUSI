@@ -11,7 +11,7 @@ import pandas as pd
 import torch
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score as f1
-from torchvision.transforms import RandomRotation, RandomHorizontalFlip, RandomVerticalFlip
+from torchvision.transforms import RandomRotation, RandomHorizontalFlip, RandomVerticalFlip, ElasticTransform
 
 from src.dataset.BUSI_dataloader import load_datasets
 from src.utils.criterions import apply_criterion_multitask_segmentation_classification
@@ -39,6 +39,15 @@ def train_one_epoch():
     ground_truth_label = []
     predicted_label = []
 
+    # # Lógica para actualizar los pesos del clasificador cada 10 epochs
+    # if (epoch + 1) % 20 == 0:
+    #     logging.info("Updating parameters of classifier branch")
+    #     for param in model.classifier.parameters():
+    #         param.requires_grad = True
+    # else:
+    #     for param in model.classifier.parameters():
+    #         param.requires_grad = False
+
     # Iterating over training loader
     for k, data in enumerate(training_loader):
         inputs, masks, label = data['image'].to(dev), data['mask'].to(dev), data['label'].to(dev)
@@ -56,7 +65,7 @@ def train_one_epoch():
             segmentation_criterion, masks, outputs, classification_criterion, label, pred_class,
             config_loss['inversely_weighted']
         )
-
+        # classification_loss = (beta * classification_loss)
         # weighting each of the loss functions
         total_loss = alpha * segmentation_loss + (1 - alpha) * classification_loss
         running_training_loss += total_loss.item()
@@ -117,6 +126,8 @@ def train_one_epoch():
 @torch.inference_mode()
 def validate_one_epoch():
     running_validation_loss = 0.0
+    running_segmentation_val_loss = 0.0
+    running_classification_val_loss = 0.0
     running_validation_dice = 0.0
     val_ground_truth_label = []
     val_predicted_label = []
@@ -135,8 +146,11 @@ def validate_one_epoch():
             config_loss['inversely_weighted']
         )
 
-        # weighting each of the loss functions
+        # classification_val_loss = (beta * classification_val_loss)
+        # weighting each of the loss funct  ions
         validation_loss = alpha * segmentation_val_loss + (1-alpha) * classification_val_loss
+        running_segmentation_val_loss += segmentation_val_loss
+        running_classification_val_loss += classification_val_loss
         running_validation_loss += validation_loss
 
         # measuring DICE
@@ -154,7 +168,7 @@ def validate_one_epoch():
         if len(config_data['classes']) > 2:
             validation_label = [l.argmax() for l in validation_label]
             pred_val_class = [pl.argmax() for pl in pred_val_class]
-            if len(pred_val_class) > 1:
+            if isinstance(pred_val_class, list):
                 for l, p in zip(validation_label, pred_val_class):
                     val_ground_truth_label.append(l)
                     val_predicted_label.append(p)
@@ -176,6 +190,8 @@ def validate_one_epoch():
 
     # total segmentation loss and DICE metric for the epoch
     avg_validation_loss = running_validation_loss / validation_loader.__len__()
+    avg_running_classification_val_loss = running_classification_val_loss / validation_loader.__len__()
+    avg_running_segmentation_val_loss = running_segmentation_val_loss / validation_loader.__len__()
     avg_validation_dice = running_validation_dice / validation_loader.__len__()
 
     # total classifiation loss and accuracy for the epoch
@@ -189,13 +205,15 @@ def validate_one_epoch():
         running_acc = accuracy_from_tensor(torch.Tensor(val_ground_truth_label), torch.Tensor(val_predicted_label))
         running_f1_score = f1_score_from_tensor(torch.Tensor(val_ground_truth_label), torch.Tensor(val_predicted_label))
 
-    return avg_validation_loss, avg_validation_dice, running_acc, running_f1_score
+    return avg_validation_loss, avg_validation_dice, running_acc, running_f1_score, avg_running_segmentation_val_loss, avg_running_classification_val_loss
 
 
-# alphas = [1, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0]
-
+# alphas = [1, .95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.55, 0.5, 0.45, .4, .35, .3, .25, .2, .15, .1, .05, .0]
+# # alphas = [.25, .2, .15, .1, .05, .0, -1, -2, -5]
 # for alpha in alphas:
-
+# for beta in betas:
+# beta = 5
+# print(beta)
 # initializing times
 init_time = time.perf_counter()
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -260,7 +278,7 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
 
         # We don't need gradients on to do reporting
         model.train(False)
-        avg_validation_loss, avg_validation_dice, val_acc, val_f1_score = validate_one_epoch()
+        avg_validation_loss, avg_validation_dice, val_acc, val_f1_score, segmentation_val_loss, classification_val_loss = validate_one_epoch()
 
         # # Update the learning rate at the end of each epoch
         if config_opt['scheduler'] == 'cosine':
@@ -287,6 +305,8 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
         logging.info(f'EPOCH {epoch} --> '
                      f'|| Training loss {avg_train_loss:.4f} '
                      f'|| Validation loss {avg_validation_loss:.4f} '
+                     f'|| Segmentation val loss {segmentation_val_loss:.4f} '
+                     f'|| Classification val loss {classification_val_loss:.4f} '
                      f'|| Training DICE {avg_dice:.4f} '
                      f'|| Validation DICE  {avg_validation_dice:.4f} '
                      f'|| Training ACC {train_acc:.4f} '
@@ -328,7 +348,7 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
     if len(config_data['classes']) <= 2:
         test_results_segmentation, test_results_classification = inference_multitask_binary_classification_segmentation(model=model, test_loader=test_loader, path=f"{run_path}/fold_{n}/", device=dev)
     else:
-        test_results_segmentation, test_results_classification = inference_multitask_multiclass_classification_segmentation(model=model, test_loader=test_loader, path=f"{run_path}/fold_{n}/", device=dev)
+        test_results_segmentation, test_results_classification = inference_multitask_multiclass_classification_segmentation(model=model, test_loader=test_loader, path=f"{run_path}/fold_{n}/", device=dev, threshold=config_training["threshold_postprocessing"], overlap_seg_based_on_class=config_training["overlap_seg_based_on_class"], overlap_class_based_on_seg=config_training["overlap_class_based_on_seg"])
     logging.info(f"Segmentation metric:\n\n{test_results_segmentation.mean()}\n")
 
     # classification metrics

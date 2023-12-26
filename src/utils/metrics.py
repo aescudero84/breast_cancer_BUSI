@@ -110,7 +110,10 @@ def calculate_metrics_multiclass_segmentation(
         metrics_dict[HAUSSDORF].append(haussdorf_distance(gt, seg))
         metrics_dict[DICE].append(dice_score(tp, fp, fn, gt, seg))
         metrics_dict[SENS].append(sentitivity(tp, fn))
-        metrics_dict[SPEC].append(specificity(tn, fp))
+        try:
+            metrics_dict[SPEC].append(specificity(tn, fp))
+        except:
+            metrics_dict[SPEC].append(0)
         metrics_dict[ACC].append(accuracy(tp, tn, fp, fn))
         metrics_dict[JACC].append(jaccard_index(tp, fp, fn, gt, seg))
         metrics_dict[PREC].append(precision(tp, fp))

@@ -36,3 +36,20 @@ def postprocess_semantic_segmentation(segmentation):
         segmentation_postprocessed[segmentation_postprocessed == 1] = 2
 
     return segmentation_postprocessed
+
+
+def postprocess_binary_segmentation(segmentation, threshold):
+    """
+    OLD FUNCTION
+    It replaced the pixels from minority class to majority class.
+
+    """
+    segmentation_postprocessed = segmentation.copy()
+
+    counter = count_pixels(segmentation)
+    tumor_pixels = counter.get(1, 0)
+
+    if tumor_pixels <= threshold:
+        segmentation_postprocessed[segmentation_postprocessed == 1] = 0
+
+    return segmentation_postprocessed
