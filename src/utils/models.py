@@ -287,6 +287,9 @@ def inference_multitask_multiclass_classification_segmentation(
     :param test_loader: Test dataloader to be evaluated
     :param path: path to store the segmentations
     :param device: CPU or GPU
+    :param threshold: CPU or GPU
+    :param overlap_seg_based_on_class: CPU or GPU
+    :param overlap_class_based_on_seg: CPU or GPU
 
     :return: CSV file containing the main metrics
     """
@@ -390,7 +393,66 @@ def inference_multitask_multiclass_classification_segmentation(
     return results, metrics
 
 
-def inference_classification(
+def inference_multiclass_classification(
+        model: torch.nn.Module,
+        test_loader: torch.utils.data.DataLoader,
+        path: str,
+        device: str = 'cpu',
+):
+    """
+    It performs multitask inference over PyTorch dataloader by means of a trained model. It means that pixels will be
+    labeled as 0 or 1 as well as the image will be classified as benign or malignant.
+
+    :param model: PyTorch module used to evaluate the images
+    :param test_loader: Test dataloader to be evaluated
+    :param path: path to store the segmentations
+    :param device: CPU or GPU
+
+    :return: CSV file containing the main metrics
+    """
+
+    # classification
+    patients = []
+    ground_truth_label = []
+    predicted_label = []
+    for i, test_data in enumerate(test_loader):
+
+        # load information from patient
+        patient_id = test_data['patient_id'].item()
+        test_label = test_data['label'].to(device)
+        test_label = torch.nn.functional.one_hot(test_label.flatten().to(torch.int64), num_classes=3).to(torch.float)
+        test_images = test_data['image'].to(device)
+
+        # generating segmentation
+        test_outputs = model(test_images)
+        if isinstance(test_outputs, list):
+            test_outputs = torch.mean(torch.stack(test_outputs, dim=0), dim=0)
+        test_label = [l.argmax() for l in test_label]
+        test_outputs = [pl.argmax() for pl in test_outputs]
+
+        # converting tensors to numpy arrays
+        patients.append(patient_id)
+        if len(test_outputs) > 1:
+            for r, p in zip(test_label, test_outputs):
+                ground_truth_label.append(int(r.detach().cpu().numpy()[0]))
+                predicted_label.append(int(p.detach().cpu().numpy()[0]))
+        else:
+            ground_truth_label.append(int(test_label[0].detach().cpu().numpy()))
+            predicted_label.append(int(test_outputs[0].detach().cpu().numpy()))
+
+    # getting metrics
+    metrics = pd.DataFrame({
+        'patient_id': patients,
+        'ground_truth': ground_truth_label,
+        'predicted_label': predicted_label
+    })
+
+    metrics.to_csv(f'{path}/results_classification.csv', index=False)
+
+    return metrics
+
+
+def inference_binary_classification(
         model: torch.nn.Module,
         test_loader: torch.utils.data.DataLoader,
         path: str,
