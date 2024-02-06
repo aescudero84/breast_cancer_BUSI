@@ -24,7 +24,7 @@ from src.utils.miscellany import write_metrics_file
 from src.utils.criterions import apply_criterion_binary_segmentation
 from src.utils.experiment_init import load_segmentation_experiment_artefacts
 from src.utils.experiment_init import device_setup
-
+from monai.transforms import MaskIntensity, HistogramNormalize, ThresholdIntensity
 
 def train_one_epoch():
     training_loss = 0.
@@ -115,7 +115,6 @@ transforms = torch.nn.Sequential(
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.RandomVerticalFlip(p=0.5),
     # RandomResizedCrop(size=(128, 128)),
-    ElasticTransform(alpha=25.),
     transforms.RandomRotation(degrees=np.random.choice(range(0, 360))),
     # transforms.RandomCrop(64)
 )
@@ -129,6 +128,7 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
     # creating specific paths and experiment's objects for each fold
     fold_time = time.perf_counter()
     Path(f"{run_path}/fold_{n}/segs/").mkdir(parents=True, exist_ok=True)
+    Path(f"{run_path}/fold_{n}/features_map/").mkdir(parents=True, exist_ok=True)
     Path(f"{run_path}/fold_{n}/plots/").mkdir(parents=True, exist_ok=True)
 
     # artefacts initialization
@@ -214,11 +214,11 @@ for n, (training_loader, validation_loader, test_loader) in enumerate(zip(train_
     """
 
     # results for validation dataset
-    logging.info(f"\n\n ###############  VALIDATION PHASE  ###############  \n\n")
-    model = load_pretrained_model(model, f'{run_path}/fold_{n}/model_{timestamp}_fold_{n}.tar')
-    val_results = inference_binary_segmentation(model=model, test_loader=validation_loader,
-                                                path=f"{run_path}/fold_{n}/", device=dev)
-    logging.info(val_results.mean())
+    # logging.info(f"\n\n ###############  VALIDATION PHASE  ###############  \n\n")
+    # model = load_pretrained_model(model, f'{run_path}/fold_{n}/model_{timestamp}_fold_{n}.tar')
+    # val_results = inference_binary_segmentation(model=model, test_loader=validation_loader,
+    #                                             path=f"{run_path}/fold_{n}/", device=dev)
+    # logging.info(val_results.mean())
 
     # results for test dataset
     logging.info(f"\n\n ###############  TESTING PHASE  ###############  \n\n")
