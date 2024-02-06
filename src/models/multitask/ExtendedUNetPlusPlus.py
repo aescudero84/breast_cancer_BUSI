@@ -10,7 +10,7 @@
 # limitations under the License.
 
 from typing import Sequence, Union
-
+import logging
 import torch
 import torch.nn as nn
 
@@ -26,7 +26,7 @@ class ExtendedUNetPlusPlus(nn.Module):
         in_channels: int = 1,
         out_channels: int = 1,
         n_classes: int = 3,
-        features: Sequence[int] = (32, 32, 64, 128, 256, 32),
+        features: Sequence[int] = (24, 48, 96, 192, 384, 24),
         deep_supervision: bool = False,
         act: Union[str, tuple] = ("LeakyReLU", {"negative_slope": 0.1, "inplace": True}),
         norm: Union[str, tuple] = ("instance", {"affine": True}),
@@ -89,10 +89,12 @@ class ExtendedUNetPlusPlus(nn.Module):
 
         self.deep_supervision = deep_supervision
         self.n_classes = n_classes
+        if n_classes == 2:
+            self.n_classes = 1
 
         fea = ensure_tuple_rep(features, 6)\
 
-        print(f"BasicUNetPlusPlus features: {fea}.")
+        logging.info(f"BasicUNetPlusPlus features: {fea}.")
 
         self.conv_0_0 = TwoConv(spatial_dims, in_channels, fea[0], act, norm, bias, dropout)
         self.conv_1_0 = Down(spatial_dims, fea[0], fea[1], act, norm, bias, dropout)
@@ -128,9 +130,9 @@ class ExtendedUNetPlusPlus(nn.Module):
         # Define classification decoder layers
         self.softmax = nn.Softmax(dim=1)
         self.process_level_3 = Down(spatial_dims, fea[3], fea[4], act, norm, bias, dropout)
-        self.process_features_map = TwoConv(spatial_dims, fea[4] * 3, fea[4], act, norm, bias, dropout)
+        # self.process_features_map = TwoConv(spatial_dims, fea[4] * 3, fea[4], act, norm, bias, dropout)
         self.classifier = nn.Sequential(
-            # nn.AdaptiveAvgPool2d(1),  # Global average pooling
+            TwoConv(spatial_dims, fea[4] * 3, fea[4], act, norm, bias, dropout),
             nn.Flatten(),  # Flatten output
             nn.Linear(fea[4] * 8 * 8, 256),  # Fully-connected layer
             nn.ReLU(),
@@ -180,8 +182,8 @@ class ExtendedUNetPlusPlus(nn.Module):
         Classifier
         """
         features_extracted = torch.cat([self.process_level_3(x_3_0), x_4_0, self.process_level_3(x_3_1)], dim=1)
-        process_features_extracted = self.process_features_map(features_extracted)
-        predicted_class = self.classifier(process_features_extracted)
+        # process_features_extracted = self.process_features_map(features_extracted)
+        predicted_class = self.classifier(features_extracted)
         if self.n_classes > 2:
             predicted_class = self.softmax(predicted_class)
 
@@ -197,9 +199,9 @@ if __name__ == "__main__":
     seq_input = torch.rand(1, 1, 128, 128)
     seq_ouput = torch.rand(1, 1, 128, 128)
 
-    model = ExtendedUNetPlusPlus(spatial_dims=2, in_channels=1, out_channels=1, n_classes=3, deep_supervision=True)
+    model = ExtendedUNetPlusPlus(spatial_dims=2, in_channels=1, out_channels=1, n_classes=2, deep_supervision=True)
     predicted_class, preds = model(seq_input)
-
+    print(predicted_class.shape)
     print(seq_input.shape)
     if model.deep_supervision:
         for p in preds:

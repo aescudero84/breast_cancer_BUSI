@@ -6,17 +6,17 @@ import torch
 from pathlib import Path
 from src.models.segmentation.BTS_UNet import BTSUNet
 from src.models.segmentation.AAU_Net import AAUNet
+from src.models.segmentation.ResidualUNet import ResidualUNet
+from src.models.segmentation.nnUNet import nnUNet2021
 from src.models.classification.BTS_UNET_classifier import BTSUNetClassifier
+from src.models.classification.UnetPlusPlus_Classifier import UNetPlusPlusClassifier
+from src.models.classification.UnetPlusPlus_Classifier_v2 import UNetPlusPlusClassifier_v2
+from src.models.classification.nnUNet_classifier import nnUNetClassifier
+from monai.networks.nets import EfficientNetBN, VNet
 from src.models.segmentation.FSB_BTS_UNet import FSB_BTS_UNet
 from src.models.segmentation.FSB_BTS_UNet_ import FSB_BTS_UNet_
 from src.models.segmentation.FSB_BTS_UNet__ import FSB_BTS_UNet__
 from src.models.segmentation.FSB_BTS_UNet___ import FSB_BTS_UNet___
-from src.models.segmentation.FSB_BTS_UNet_v2 import FSB_BTS_UNet_v2
-from src.models.segmentation.FSB_BTS_UNet_v3 import FSB_BTS_UNet_v3
-from src.models.segmentation.FSB_BTS_UNet_v5 import FSB_BTS_UNet_v5
-from src.models.segmentation.FSB_BTS_UNet_v6 import FSB_BTS_UNet_v6
-from src.models.segmentation.FSB_BTS_UNet_v7 import FSB_BTS_UNet_v7
-# from src.models.segmentation.FSB_BTS_UNet_a import FSB_BTS_UNet
 from src.models.segmentation.TransUNet import TransUNet
 from src.models.multitask.Multi_BTS_UNet import Multi_BTS_UNet
 from src.models.multitask.Multi_FSB_BTS_UNet import Multi_FSB_BTS_UNet
@@ -29,12 +29,13 @@ from src.models.multitask.Multi_FSB_BTS_UNet_new_new import Multi_FSB_BTS_UNet_n
 from src.models.multitask.Multi_FSB_BTS_UNet_new_2 import Multi_FSB_BTS_UNet_new_2
 from src.models.multitask.Multi_FSB_BTS_UNet3 import Multi_FSB_BTS_UNet3
 from src.models.multitask.ExtendedUNetPlusPlus import ExtendedUNetPlusPlus
+from src.models.multitask.ExtendednnUNet import ExtendednnUNet2021
 from src.models.multitask.ExtendedUNetPlusPlusV2 import ExtendedUNetPlusPlusV2
-from src.models.segmentation.FSB_BTS_UNet_test1 import FSB_BTS_UNet_test1
+from src.models.multitask.ExtendedSegResNet import ExtendedSegResNet
 from monai.networks.nets import UNet, AttentionUnet, BasicUnetPlusPlus
 from monai.losses import DiceLoss, DiceFocalLoss, GeneralizedDiceLoss, DiceCELoss, HausdorffDTLoss, FocalLoss
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
-from monai.networks.nets import SwinUNETR, SegResNet, AHNet
+from monai.networks.nets import SwinUNETR, SegResNet, AHNet, HighResNet
 from src.utils.models import count_parameters
 
 
@@ -63,24 +64,10 @@ def init_segmentation_model(
 
     if architecture == 'BTSUNet':
         model = BTSUNet(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
-    elif architecture == 'FSB_BTS_UNet':
-        model = FSB_BTS_UNet(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
-    elif architecture == 'FSB_BTS_UNet_':
-        model = FSB_BTS_UNet_(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
     elif architecture == 'FSB_BTS_UNet__':
         model = FSB_BTS_UNet__(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
-    elif architecture == 'FSB_BTS_UNet___':
-        model = FSB_BTS_UNet___(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
-    elif architecture == 'FSB_BTS_UNet_v2':
-        model = FSB_BTS_UNet_v2(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
-    elif architecture == 'FSB_BTS_UNet_v3':
-        model = FSB_BTS_UNet_v3(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
-    elif architecture == 'FSB_BTS_UNet_v5':
-        model = FSB_BTS_UNet_v5(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
-    elif architecture == 'FSB_BTS_UNet_v6':
-        model = FSB_BTS_UNet_v6(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
-    elif architecture == 'FSB_BTS_UNet_v7':
-        model = FSB_BTS_UNet_v7(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+    elif architecture == 'nnUNet':
+        model = nnUNet2021(sequences=sequences, regions=regions)
     elif architecture == 'UNet':
         model = UNet(spatial_dims=2, in_channels=sequences, out_channels=regions,
                      channels=(width, 2*width, 4*width, 8*width), strides=(2, 2, 2))
@@ -91,18 +78,18 @@ def init_segmentation_model(
                               channels=(width, 2*width, 4*width, 8*width), strides=(2, 2, 2))
     elif architecture == "AAUnet":
         model = AAUNet(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
+    elif architecture == "ResidualUNet":
+        model = ResidualUNet(sequences=sequences, regions=regions, width=width)
     elif architecture == "BasicUnetPlusPlus":
         model = BasicUnetPlusPlus(spatial_dims=2, in_channels=sequences, out_channels=regions,
                                   deep_supervision=deep_supervision)
-    elif architecture == "FSB_BTS_UNet_test1":
-        model = FSB_BTS_UNet_test1(sequences=sequences, regions=regions, width=width, deep_supervision=deep_supervision)
     elif architecture == "SwinUNETR":
         model = SwinUNETR(img_size=(128, 128), in_channels=1, out_channels=1, use_checkpoint=True, spatial_dims=2)
-    elif architecture == "TransUNet":
-        model = TransUNet(img_dim=128, in_channels=sequences, class_num=regions, out_channels=128, head_num=4,
-                          mlp_dim=256, block_num=8, patch_dim=4)
     elif architecture == "SegResNet":
-        model = SegResNet(spatial_dims=2, init_filters=width, in_channels=sequences, out_channels=1)
+        model = SegResNet(spatial_dims=2, in_channels=sequences, out_channels=1)
+    elif architecture == "HighResNet":
+        model = HighResNet(spatial_dims=2, in_channels=sequences, out_channels=1,
+                           norm_type=('batch', {'affine': True}), acti_type=('relu', {'inplace': True}))
     else:
         model = torch.nn.Module()
         assert "The model selected does not exist. " \
@@ -123,7 +110,7 @@ def init_segmentation_model(
 def init_classification_model(
         architecture: str,
         sequences: int = 1,
-        classes: int = 1,
+        n_classes: int = 1,
         width: int = 48,
         save_folder: Path = None,
         deep_supervision: bool = False
@@ -133,7 +120,7 @@ def init_classification_model(
 
     :param architecture: architecture chosen
     :param sequences: number of channels for the input layer
-    :param classes: number of channels for the output layer
+    :param n_classes: number of channels for the output layer
     :param width: number of channels to use in the first convolutional module
     :param deep_supervision: whether deep supervision is active
     :param save_folder: path to store the model
@@ -144,12 +131,16 @@ def init_classification_model(
     logging.info(f"The model will be fed with {sequences} sequences")
 
     if architecture == 'BTSUNetClassifier':
-        model = BTSUNetClassifier(sequences=sequences, classes=classes, width=width, deep_supervision=deep_supervision)
+        model = BTSUNetClassifier(sequences=sequences, classes=n_classes, width=width, deep_supervision=deep_supervision)
     elif architecture == 'EfficientNet':
-        from monai.networks.nets import EfficientNetBN
         model = EfficientNetBN("efficientnet-b0", pretrained=True, progress=True, spatial_dims=2,
-                               in_channels=1, num_classes=1, norm=('batch', {'eps': 0.001, 'momentum': 0.01}),
-                               adv_prop=False)
+                               in_channels=sequences, num_classes=n_classes)
+    elif architecture == 'UNetPlusPlusClassifier':
+        model = UNetPlusPlusClassifier(spatial_dims=2, in_channels=sequences, n_classes=n_classes)
+    elif architecture == 'UNetPlusPlusClassifier_v2':
+        model = UNetPlusPlusClassifier_v2(spatial_dims=2, in_channels=sequences, n_classes=n_classes)
+    elif architecture == 'nnUNetClassifier':
+        model = nnUNetClassifier(sequences=sequences, n_classes=n_classes)
     else:
         model = torch.nn.Module()
         assert "The model selected does not exist. " \
@@ -214,6 +205,10 @@ def init_multitask_model(
         model = ExtendedUNetPlusPlus(in_channels=sequences, out_channels=regions, n_classes=n_classes, deep_supervision=deep_supervision)
     elif architecture == 'ExtendedUNetPlusPlusV2':
         model = ExtendedUNetPlusPlusV2(in_channels=sequences, out_channels=regions, n_classes=n_classes, deep_supervision=deep_supervision)
+    elif architecture == "ExtendednnUNet2021":
+        model =ExtendednnUNet2021(sequences=sequences, regions=regions, n_classes=n_classes)
+    elif architecture == 'ExtendedSegResNet':
+        model = ExtendedSegResNet(spatial_dims=2, init_filters=width, in_channels=sequences, out_channels=1, n_classes=n_classes, deep_supervision=False)
     else:
         model = torch.nn.Module()
         assert "The model selected does not exist. " \
@@ -351,6 +346,25 @@ def load_multitask_experiment_artefacts(config_data, config_model, config_opt, c
                                   min_lr=float(config_opt['min_lr']), factor=float(config_opt['decrease_factor']))
 
     return model, optimizer, segmentation_criterion, classification_criterion, scheduler
+
+
+def load_classification_experiment_artefacts(config_data, config_model, config_opt, config_loss, n_augments, run_path):
+
+    model = init_classification_model(architecture=config_model['architecture'],
+                                      sequences=config_model['sequences'] + n_augments,
+                                      width=config_model['width'],
+                                      n_classes=len(config_data['classes']),
+                                      deep_supervision=config_model['deep_supervision'],
+                                      save_folder=Path(f'{run_path}/'))
+    optimizer = init_optimizer(model=model, optimizer=config_opt['opt'], learning_rate=config_opt['lr'])
+    classification_criterion = init_criterion_classification(n_classes=len(config_data['classes']),
+                                                             classes_weighted=config_data["classes_weighted"],
+                                                             classification_criterion=config_loss['classification_criterion'])
+    scheduler = init_lr_scheduler(optimizer=optimizer, scheduler=config_opt['scheduler'],
+                                  t_max=int(config_opt['t_max']), patience=int(config_opt['patience']),
+                                  min_lr=float(config_opt['min_lr']), factor=float(config_opt['decrease_factor']))
+
+    return model, optimizer, classification_criterion, scheduler
 
 
 def device_setup():

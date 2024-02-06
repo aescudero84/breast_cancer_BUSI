@@ -8,8 +8,8 @@ optimizer:
   opt: Adam
   lr: 0.0001
   scheduler: plateau
-  patience: 10
-  min_lr: 1e-7
+  patience: 20
+  min_lr: 1e-6
   decrease_factor: 0.5
   t_max: 40
 
@@ -27,8 +27,8 @@ training:
   cuda_benchmark: False
   alpha: 0.85
   threshold_postprocessing: 0
-  overlap_seg_based_on_class: True
-  overlap_class_based_on_seg: True
+  overlap_seg_based_on_class: False
+  overlap_class_based_on_seg: False
 
 data:
   semantic_segmentation: False
@@ -39,7 +39,7 @@ data:
   classes_weighted: [1, 1, 1]
   use_duplicated_to_train: False
   remove_outliers: False
-  oversampling: True
+  oversampling: False
   augmentation:
     CLAHE: False
     SOBEL: False
